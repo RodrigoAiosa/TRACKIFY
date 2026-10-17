@@ -92,7 +92,7 @@
         <main class="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
             <div class="flex border-b border-gray-700 space-x-4">
                 <button id="tab-ponto" class="pb-2 px-4 border-b-2 border-emerald-500 text-emerald-400 font-semibold">Lançamento de Ponto & Atividades</button>
-                <button id="tab-aprovação" class="pb-2 px-4 border-b-2 border-transparent text-gray-400 hover:text-gray-200 hidden">Aprovação (Gestor)</button>
+                <button id="tab-aprovação" class="pb-2 px-4 border-b-2 border-transparent text-gray-400 hover:text-gray-200 hidden">Aprovação (Gestor)<span id="tab-pendentes" class="hidden ml-2 px-2 py-0.5 text-xs rounded-full bg-amber-600 text-white"></span></button>
             </div>
 
             <section id="view-colaborador" class="space-y-6">
@@ -203,10 +203,38 @@
             </section>
 
             <section id="view-gestor" class="hidden space-y-6">
-                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                    <h2 class="text-lg font-semibold text-emerald-400 mb-4">Painel de Aprovação de Horas</h2>
-                    <p class="text-gray-400 text-sm">Selecione o colaborador e período para analisar e aprovar as atividades registradas.</p>
+                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4">
+                    <div class="flex flex-wrap items-baseline justify-between gap-2">
+                        <h2 class="text-lg font-semibold text-emerald-400">Painel de Aprovação de Horas</h2>
+                        <p id="g-resumo" class="text-sm text-gray-400"></p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <div>
+                            <label for="g-colab" class="block text-xs text-gray-400">Colaborador</label>
+                            <select id="g-colab" class="w-full mt-1 p-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none"><option value="">Todos</option></select>
+                        </div>
+                        <div>
+                            <label for="g-status" class="block text-xs text-gray-400">Situação</label>
+                            <select id="g-status" class="w-full mt-1 p-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                                <option value="pendentes">Com pendências</option>
+                                <option value="avaliadas">Avaliadas</option>
+                                <option value="todas">Todas</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="g-de" class="block text-xs text-gray-400">De</label>
+                            <input type="date" id="g-de" class="w-full mt-1 p-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                        </div>
+                        <div>
+                            <label for="g-ate" class="block text-xs text-gray-400">Até</label>
+                            <input type="date" id="g-ate" class="w-full mt-1 p-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                        </div>
+                        <div class="flex items-end">
+                            <button type="button" id="g-buscar" class="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-sm text-white font-semibold rounded-md transition-colors">Atualizar</button>
+                        </div>
+                    </div>
                 </div>
+                <div id="g-lista" class="space-y-4"></div>
             </section>
         </main>
     </div>
@@ -219,6 +247,34 @@
             <div class="flex justify-end gap-3">
                 <button type="button" id="modal-cancelar" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-sm text-gray-200 rounded-lg">Cancelar</button>
                 <button type="button" id="modal-confirmar" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-sm text-white font-semibold rounded-lg">Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: ajustar / rejeitar atividade -->
+    <div id="modal-avaliar" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="av-titulo">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-6 w-full max-w-md space-y-4">
+            <h3 id="av-titulo" class="text-lg font-semibold text-gray-100">Ajustar ou rejeitar</h3>
+            <p id="av-descricao" class="text-sm text-gray-300 break-words"></p>
+            <div>
+                <label for="av-decisao" class="block text-xs text-gray-400">Decisão</label>
+                <select id="av-decisao" class="w-full mt-1 p-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                    <option value="parcial">Aprovar parcialmente</option>
+                    <option value="rejeitar">Rejeitar</option>
+                </select>
+            </div>
+            <div id="av-minutos-box">
+                <label for="av-minutos" class="block text-xs text-gray-400">Tempo aprovado (min) <span id="av-realizado" class="text-gray-500"></span></label>
+                <input type="number" id="av-minutos" min="1" step="5" class="w-full mt-1 p-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+            </div>
+            <div>
+                <label for="av-motivo" id="av-motivo-label" class="block text-xs text-gray-400">Observação (opcional)</label>
+                <textarea id="av-motivo" rows="3" maxlength="300" class="w-full mt-1 p-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none"></textarea>
+            </div>
+            <p id="av-erro" class="hidden text-xs text-red-400"></p>
+            <div class="flex justify-end gap-3">
+                <button type="button" id="av-cancelar" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-sm text-gray-200 rounded-lg">Cancelar</button>
+                <button type="button" id="av-salvar" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-sm text-white font-semibold rounded-lg">Salvar avaliação</button>
             </div>
         </div>
     </div>

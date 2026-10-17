@@ -223,11 +223,13 @@ document.addEventListener("DOMContentLoaded", () => {
             const roleBadge = $("user-role-badge");
             const nomes = { colaborador: "Colaborador", gestor: "Gestor", admin: "Admin" };
             if (roleBadge) roleBadge.textContent = nomes[perfil.role] || perfil.role;
-            if (perfil.role === "gestor" || perfil.role === "admin") {
+            if (ehGestor()) {
                 const tabAprovacao = $("tab-aprovação");
                 if (tabAprovacao) tabAprovacao.classList.remove("hidden");
+                atualizarPendentes();
             }
         }
+        ativarAba("ponto");
 
         $("ponto-data").value = dataISO(new Date());
         await carregarApoio();
@@ -619,6 +621,270 @@ document.addEventListener("DOMContentLoaded", () => {
 
             toast("Dia excluído.");
             await Promise.all([carregarLancamentos(), carregarDia($("ponto-data").value)]);
+        }
+    });
+
+    // ---------------------------------------------------------------
+    // Abas
+    // ---------------------------------------------------------------
+    const ehGestor = () => !!perfil && (perfil.role === "gestor" || perfil.role === "admin");
+    let gestorIniciado = false;
+
+    function ativarAba(qual) {
+        const colab = qual === "ponto";
+        $("view-colaborador").classList.toggle("hidden", !colab);
+        $("view-gestor").classList.toggle("hidden", colab);
+
+        const ativa = ["border-emerald-500", "text-emerald-400", "font-semibold"];
+        const inativa = ["border-transparent", "text-gray-400", "hover:text-gray-200"];
+        const marca = (btn, ligado) => {
+            ativa.forEach((c) => btn.classList.toggle(c, ligado));
+            inativa.forEach((c) => btn.classList.toggle(c, !ligado));
+        };
+        marca($("tab-ponto"), colab);
+        marca($("tab-aprovação"), !colab);
+
+        if (!colab && ehGestor()) iniciarGestor();
+    }
+    $("tab-ponto").addEventListener("click", () => ativarAba("ponto"));
+    $("tab-aprovação").addEventListener("click", () => ativarAba("gestor"));
+
+    // ---------------------------------------------------------------
+    // Aprovação (gerência)
+    // ---------------------------------------------------------------
+    let gDados = [];
+    let avaliando = null;   // atividade aberta no modal Ajustar/Rejeitar
+
+    async function atualizarPendentes() {
+        const { count } = await sb.from("apontamentos_atividades")
+            .select("id", { count: "exact", head: true })
+            .eq("status_aprovacao", "Pendente")
+            .neq("usuario_id", usuario.id);
+        const badge = $("tab-pendentes");
+        if (count > 0) {
+            badge.textContent = count;
+            badge.classList.remove("hidden");
+        } else {
+            badge.classList.add("hidden");
+        }
+    }
+
+    async function iniciarGestor() {
+        if (!gestorIniciado) {
+            gestorIniciado = true;
+            const hoje = new Date();
+            const ini = new Date();
+            ini.setDate(ini.getDate() - 30);
+            $("g-de").value = dataISO(ini);
+            $("g-ate").value = dataISO(hoje);
+
+            const { data: equipe } = await sb.from("perfis")
+                .select("id, nome_completo").neq("id", usuario.id).order("nome_completo");
+            $("g-colab").innerHTML = `<option value="">Todos</option>` +
+                (equipe || []).map((x) => `<option value="${x.id}">${esc(x.nome_completo)}</option>`).join("");
+        }
+        await carregarGestor();
+    }
+
+    async function carregarGestor() {
+        let q = sb.from("apontamentos_ponto")
+            .select("*, perfis(nome_completo), apontamentos_atividades(*, projetos(nome_projeto), tipos_atividade(nome))")
+            .neq("usuario_id", usuario.id)
+            .order("data", { ascending: false });
+        if ($("g-de").value) q = q.gte("data", $("g-de").value);
+        if ($("g-ate").value) q = q.lte("data", $("g-ate").value);
+        if ($("g-colab").value) q = q.eq("usuario_id", $("g-colab").value);
+
+        const { data, error } = await q;
+        if (error) {
+            $("g-lista").innerHTML = `<p class="text-sm text-red-400">Não foi possível carregar os lançamentos: ${esc(msgErro(error))}</p>`;
+            return;
+        }
+        gDados = data || [];
+        renderGestor();
+        atualizarPendentes();
+    }
+
+    function renderGestor() {
+        const filtro = $("g-status").value;
+        const ehPend = (a) => a.status_aprovacao === "Pendente";
+
+        // resumo geral do período
+        let pend = 0, apr = 0, rej = 0, minPend = 0;
+        gDados.forEach((p) => (p.apontamentos_atividades || []).forEach((a) => {
+            if (ehPend(a)) { pend++; minPend += a.duracao_realizada_minutos || 0; }
+            else if (a.status_aprovacao === "Glosado/Rejeitado") rej++;
+            else apr++;
+        }));
+        $("g-resumo").textContent = `${pend} pendente(s) (${fmtMin(minPend)}) · ${apr} aprovada(s) · ${rej} rejeitada(s)`;
+
+        const dias = gDados.filter((p) => {
+            const atv = p.apontamentos_atividades || [];
+            if (filtro === "pendentes") return atv.some(ehPend);
+            if (filtro === "avaliadas") return atv.some((a) => !ehPend(a));
+            return true;
+        });
+
+        const box = $("g-lista");
+        if (!dias.length) {
+            box.innerHTML = `<p class="text-sm text-gray-500">Nenhum lançamento encontrado para os filtros escolhidos.</p>`;
+            return;
+        }
+
+        box.innerHTML = dias.map((p) => {
+            const atv = (p.apontamentos_atividades || [])
+                .slice().sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
+            const qtdPend = atv.filter(ehPend).length;
+            const periodos = [1, 2, 3]
+                .filter((n) => p[`entrada_${n}`] && p[`saida_${n}`])
+                .map((n) => `${hhmm(p[`entrada_${n}`])}–${hhmm(p[`saida_${n}`])}`).join(" · ");
+            const minAtv = atv.reduce((s, a) => s + (a.duracao_realizada_minutos || 0), 0);
+            const minApr = atv.reduce((s, a) => s + (a.duracao_aprovada_minutos || 0), 0);
+
+            const linhas = atv.map((a) => {
+                const integral = a.status_aprovacao === "Aprovado Integral";
+                let detalhe = "";
+                if (a.status_aprovacao === "Aprovado Parcial") detalhe = ` · aprovado ${fmtMin(a.duracao_aprovada_minutos)} de ${fmtMin(a.duracao_realizada_minutos)}`;
+                return `
+                <div class="flex items-start justify-between gap-3 py-3 border-t border-gray-700">
+                    <label class="flex items-start gap-3 min-w-0 cursor-pointer">
+                        <input type="checkbox" data-check="${a.id}" data-status="${esc(a.status_aprovacao)}" ${integral ? "checked" : ""}
+                               class="mt-1 h-5 w-5 shrink-0 accent-emerald-500 cursor-pointer" aria-label="Aprovar atividade">
+                        <span class="min-w-0">
+                            <span class="block text-sm text-gray-100 break-words">${esc(a.descricao_atividade)}</span>
+                            <span class="block text-xs text-gray-400 mt-1">${esc((a.projetos || {}).nome_projeto || "Sem projeto")} · ${esc((a.tipos_atividade || {}).nome || "Sem tipo")} · ${fmtMin(a.duracao_realizada_minutos)} realizadas (previstas ${fmtMin(a.duracao_prevista_minutos)})${detalhe}</span>
+                            ${a.intercorrencias ? `<span class="block text-xs text-amber-300 mt-1">Intercorrência: ${esc(a.intercorrencias)}</span>` : ""}
+                            ${a["motivo_nao_aprovação"] ? `<span class="block text-xs text-red-300 mt-1">Motivo: ${esc(a["motivo_nao_aprovação"])}</span>` : ""}
+                        </span>
+                    </label>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <span class="px-2 py-0.5 text-xs rounded-full ${STATUS_CORES[a.status_aprovacao] || "bg-gray-700 text-gray-300"}">${esc(a.status_aprovacao)}</span>
+                        <button type="button" data-ajustar="${a.id}" data-desc="${esc(a.descricao_atividade)}" data-realizado="${a.duracao_realizada_minutos || 0}"
+                                class="text-xs px-2.5 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100">Ajustar / Rejeitar</button>
+                    </div>
+                </div>`;
+            }).join("");
+
+            return `
+            <article class="border border-gray-700 rounded-xl px-4 pt-4 bg-gray-900/40">
+                <div class="flex flex-wrap items-start justify-between gap-3 pb-3">
+                    <div>
+                        <p class="font-semibold text-gray-100">${esc((p.perfis || {}).nome_completo || "Colaborador")} <span class="text-gray-400 font-normal">— ${fmtData(p.data)}</span></p>
+                        <p class="text-xs text-gray-400 mt-1">${esc(p.modalidade)} · ${esc(periodos || "sem horários")} · ponto ${fmtMin(Number(p.total_diario_horas) * 60)} · atividades ${fmtMin(minAtv)} · aprovado ${fmtMin(minApr)}</p>
+                    </div>
+                    ${qtdPend ? `<button type="button" data-aprovar-dia="${p.id}" data-qtd="${qtdPend}" class="text-xs px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">Aprovar dia (${qtdPend})</button>`
+                              : `<span class="px-2 py-0.5 text-xs rounded-full bg-emerald-900 text-emerald-300">Dia avaliado</span>`}
+                </div>
+                ${linhas || `<p class="text-xs text-gray-500 py-3 border-t border-gray-700">Sem atividades neste dia.</p>`}
+            </article>`;
+        }).join("");
+    }
+
+    async function avaliar(id, status, minutos = null, motivo = null) {
+        const { error } = await sb.rpc("avaliar_atividade", {
+            p_atividade_id: id, p_status: status, p_minutos_aprovados: minutos, p_motivo: motivo
+        });
+        if (error) { toast(msgErro(error), "erro"); return false; }
+        return true;
+    }
+
+    $("g-buscar").addEventListener("click", carregarGestor);
+    $("g-status").addEventListener("change", renderGestor);
+    $("g-colab").addEventListener("change", carregarGestor);
+
+    $("g-lista").addEventListener("click", async (e) => {
+        const check = e.target.closest("[data-check]");
+        const ajustar = e.target.closest("[data-ajustar]");
+        const aprovarDia = e.target.closest("[data-aprovar-dia]");
+
+        if (check) {
+            // controlamos o estado do checkbox manualmente (ele só muda após a resposta do banco)
+            e.preventDefault();
+            const status = check.dataset.status;
+            if (status === "Aprovado Integral") {
+                const ok = await confirmarModal({ titulo: "Reabrir avaliação?", texto: "A atividade volta para Pendente e o colaborador poderá alterá-la novamente.", botao: "Reabrir" });
+                if (!ok) return;
+                if (await avaliar(check.dataset.check, "Pendente")) { toast("Avaliação reaberta.", "aviso"); await carregarGestor(); }
+            } else {
+                if (status !== "Pendente") {
+                    const ok = await confirmarModal({ titulo: "Alterar avaliação?", texto: `Esta atividade está como “${status}”. Deseja aprová-la integralmente?`, botao: "Aprovar" });
+                    if (!ok) return;
+                }
+                if (await avaliar(check.dataset.check, "Aprovado Integral")) { toast("Atividade aprovada."); await carregarGestor(); }
+            }
+            return;
+        }
+
+        if (aprovarDia) {
+            const qtd = Number(aprovarDia.dataset.qtd || 0);
+            const ok = await confirmarModal({
+                titulo: "Aprovar o dia?",
+                texto: `${qtd === 1 ? "A atividade pendente será aprovada" : `As ${qtd} atividades pendentes serão aprovadas`} integralmente.`,
+                botao: "Aprovar dia"
+            });
+            if (!ok) return;
+            const { data, error } = await sb.rpc("aprovar_dia", { p_ponto_id: aprovarDia.dataset.aprovarDia });
+            if (error) return toast(msgErro(error), "erro");
+            toast(`${data} atividade(s) aprovada(s).`);
+            await carregarGestor();
+            return;
+        }
+
+        if (ajustar) {
+            avaliando = { id: ajustar.dataset.ajustar, realizado: Number(ajustar.dataset.realizado || 0) };
+            $("av-descricao").textContent = ajustar.dataset.desc;
+            $("av-realizado").textContent = `(realizado: ${fmtMin(avaliando.realizado)})`;
+            $("av-decisao").value = "parcial";
+            $("av-minutos").value = avaliando.realizado > 1 ? Math.floor(avaliando.realizado / 2) : "";
+            $("av-motivo").value = "";
+            $("av-erro").classList.add("hidden");
+            atualizarDecisao();
+            $("modal-avaliar").classList.remove("hidden");
+            $("av-minutos").focus();
+        }
+    });
+
+    function atualizarDecisao() {
+        const rejeitar = $("av-decisao").value === "rejeitar";
+        $("av-minutos-box").classList.toggle("hidden", rejeitar);
+        $("av-motivo-label").textContent = rejeitar ? "Motivo da rejeição (obrigatório)" : "Observação (opcional)";
+    }
+    $("av-decisao").addEventListener("change", atualizarDecisao);
+
+    function fecharAvaliar() {
+        $("modal-avaliar").classList.add("hidden");
+        avaliando = null;
+    }
+    $("av-cancelar").addEventListener("click", fecharAvaliar);
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !$("modal-avaliar").classList.contains("hidden")) fecharAvaliar();
+    });
+
+    $("av-salvar").addEventListener("click", async () => {
+        if (!avaliando) return;
+        const rejeitar = $("av-decisao").value === "rejeitar";
+        const motivo = $("av-motivo").value.trim();
+        const erro = $("av-erro");
+        const mostrar = (m) => { erro.textContent = m; erro.classList.remove("hidden"); };
+
+        let status, minutos = null;
+        if (rejeitar) {
+            if (!motivo) return mostrar("Informe o motivo da rejeição.");
+            status = "Glosado/Rejeitado";
+        } else {
+            minutos = parseInt($("av-minutos").value, 10);
+            if (isNaN(minutos) || minutos <= 0) return mostrar("Informe o tempo aprovado, em minutos.");
+            if (minutos >= avaliando.realizado) return mostrar(`Na aprovação parcial, o tempo deve ser menor que o realizado (${avaliando.realizado} min). Para aprovar tudo, use o check.`);
+            status = "Aprovado Parcial";
+        }
+
+        $("av-salvar").disabled = true;
+        const ok = await avaliar(avaliando.id, status, minutos, motivo || null);
+        $("av-salvar").disabled = false;
+        if (ok) {
+            fecharAvaliar();
+            toast(rejeitar ? "Atividade rejeitada." : "Aprovação parcial registrada.");
+            await carregarGestor();
         }
     });
 
