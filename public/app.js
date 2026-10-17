@@ -1,14 +1,14 @@
 const SUPABASE_URL = "https://yoywnhuewdxkfuqwrbbt.supabase.co";
 const SUPABASE_KEY = "sb_publishable_5LW2Y6nn91TMXBbK3CADMg_DvdsypxT"; // Cole a sua Publishable Key (sb_publishable_...)
 
-let supabase;
+let sb;
 
 // Garante que o script só roda após o HTML carregar por completo
 document.addEventListener("DOMContentLoaded", () => {
     
     // Inicializa Supabase
     if (window.supabase) {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     } else {
         console.error("SDK do Supabase não foi carregado.");
     }
@@ -56,9 +56,9 @@ document.addEventListener("DOMContentLoaded", () => {
             const email = document.getElementById("login-email").value;
             const password = document.getElementById("login-password").value;
 
-            if (!supabase) return alert("Erro ao conectar ao banco de dados.");
+            if (!sb) return alert("Erro ao conectar ao banco de dados.");
 
-            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            const { data, error } = await sb.auth.signInWithPassword({ email, password });
 
             if (error) {
                 alert("Erro ao fazer login: " + error.message);
@@ -86,10 +86,10 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             if (passwordError) passwordError.classList.add("hidden");
 
-            if (!supabase) return alert("Erro ao conectar ao banco de dados.");
+            if (!sb) return alert("Erro ao conectar ao banco de dados.");
 
             // O perfil (role) é sempre definido como 'colaborador' no banco.
-            const { data, error } = await supabase.auth.signUp({
+            const { data, error } = await sb.auth.signUp({
                 email,
                 password,
                 options: {
@@ -115,7 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Logout
     if (btnLogout) {
         btnLogout.addEventListener("click", async () => {
-            if (supabase) await supabase.auth.signOut();
+            if (sb) await sb.auth.signOut();
             location.reload();
         });
     }
@@ -126,7 +126,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (appScreen) appScreen.classList.remove("hidden");
         if (userDisplay) userDisplay.textContent = user.email;
 
-        const { data: perfil } = await supabase.from("perfis").select("*").eq("id", user.id).single();
+        const { data: perfil } = await sb.from("perfis").select("*").eq("id", user.id).single();
 
         if (perfil && (perfil.role === 'gestor' || perfil.role === 'admin')) {
             const tabAprovacao = document.getElementById("tab-aprovação");
