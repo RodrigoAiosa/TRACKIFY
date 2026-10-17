@@ -1,21 +1,36 @@
-// Configuração do Supabase (Substitua pelas suas chaves ou injete dinamicamente)
 const SUPABASE_URL = "https://yoywnhuewdxkfuqwrbbt.supabase.co";
-const SUPABASE_KEY = "SUA_SUPABASE_ANON_KEY"; 
+const SUPABASE_KEY = "SUA_SUPABASE_ANON_KEY"; // Substitua pela sua anon key do Supabase
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Elementos DOM
-const loginScreen = document.getElementById("login-screen");
+const authScreen = document.getElementById("auth-screen");
 const appScreen = document.getElementById("app-screen");
+
 const loginForm = document.getElementById("login-form");
+const registerForm = document.getElementById("register-form");
+
+const btnShowRegister = document.getElementById("btn-show-register");
+const btnShowLogin = document.getElementById("btn-show-login");
 const btnLogout = document.getElementById("btn-logout");
 const userDisplay = document.getElementById("user-display");
 
-// Evento de Login
+// Alternar entre formulários
+btnShowRegister.addEventListener("click", () => {
+    loginForm.classList.add("hidden");
+    registerForm.classList.remove("hidden");
+});
+
+btnShowLogin.addEventListener("click", () => {
+    registerForm.classList.add("hidden");
+    loginForm.classList.remove("hidden");
+});
+
+// Ação de Login
 loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
+    const email = document.getElementById("login-email").value;
+    const password = document.getElementById("login-password").value;
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
@@ -26,19 +41,47 @@ loginForm.addEventListener("submit", async (e) => {
     }
 });
 
-// Evento de Logout
+// Ação de Registo/Cadastro
+registerForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nome = document.getElementById("reg-nome").value;
+    const email = document.getElementById("reg-email").value;
+    const password = document.getElementById("reg-password").value;
+    const role = document.getElementById("reg-role").value;
+
+    const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+            data: {
+                nome_completo: nome,
+                username: email.split('@')[0],
+                role: role
+            }
+        }
+    });
+
+    if (error) {
+        alert("Erro ao registar utilizador: " + error.message);
+    } else {
+        alert("Registo efetuado com sucesso! Se a confirmação de e-mail estiver ativa no Supabase, verifique a sua caixa de entrada.");
+        registerForm.classList.add("hidden");
+        loginForm.classList.remove("hidden");
+    }
+});
+
+// Logout
 btnLogout.addEventListener("click", async () => {
     await supabase.auth.signOut();
     location.reload();
 });
 
-// Carregar Aplicação pós Auth
+// Carregar Aplicação pós Autenticação
 async function carregarApp(user) {
-    loginScreen.classList.add("hidden");
+    authScreen.classList.add("hidden");
     appScreen.classList.remove("hidden");
     userDisplay.textContent = user.email;
 
-    // Buscar perfil do usuário
     const { data: perfil } = await supabase.from("perfis").select("*").eq("id", user.id).single();
 
     if (perfil && (perfil.role === 'gestor' || perfil.role === 'admin')) {
