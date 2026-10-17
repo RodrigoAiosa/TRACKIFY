@@ -10,28 +10,63 @@
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen font-sans">
 
-    <!-- Tela de Login -->
-    <div id="login-screen" class="flex items-center justify-center min-h-screen">
+    <!-- Tela de Autenticação (Login / Registo) -->
+    <div id="auth-screen" class="flex items-center justify-center min-h-screen p-4">
         <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
-            <h1 class="text-3xl font-bold text-center text-emerald-400 mb-2">Trackify</h1>
-            <p class="text-gray-400 text-center mb-6">Gestão de Horas e Apontamentos</p>
+            <h1 class="text-3xl font-bold text-center text-emerald-400 mb-1">Trackify</h1>
+            <p class="text-gray-400 text-center mb-6 text-sm">Gestão de Horas e Apontamentos</p>
+
+            <!-- FORMULÁRIO DE LOGIN -->
             <form id="login-form" class="space-y-4">
                 <div>
                     <label class="block text-sm text-gray-300">E-mail</label>
-                    <input type="email" id="email" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500">
+                    <input type="email" id="login-email" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
                 </div>
                 <div>
                     <label class="block text-sm text-gray-300">Senha</label>
-                    <input type="password" id="password" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500">
+                    <input type="password" id="login-password" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
                 </div>
                 <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors">Entrar</button>
+                <div class="text-center mt-4">
+                    <p class="text-xs text-gray-400">Ainda não tem conta? 
+                        <button type="button" id="btn-show-register" class="text-emerald-400 hover:underline font-semibold">Cadastrar-se</button>
+                    </p>
+                </div>
+            </form>
+
+            <!-- FORMULÁRIO DE CADASTRO -->
+            <form id="register-form" class="space-y-4 hidden">
+                <div>
+                    <label class="block text-sm text-gray-300">Nome Completo</label>
+                    <input type="text" id="reg-nome" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-300">E-mail</label>
+                    <input type="email" id="reg-email" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-300">Senha</label>
+                    <input type="password" id="reg-password" minlength="6" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-300">Perfil</label>
+                    <select id="reg-role" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                        <option value="colaborador">Colaborador</option>
+                        <option value="gestor">Gestor / Admin</option>
+                    </select>
+                </div>
+                <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors">Criar Conta</button>
+                <div class="text-center mt-4">
+                    <p class="text-xs text-gray-400">Já possui conta? 
+                        <button type="button" id="btn-show-login" class="text-emerald-400 hover:underline font-semibold">Fazer Login</button>
+                    </p>
+                </div>
             </form>
         </div>
     </div>
 
     <!-- Dashboard Principal -->
     <div id="app-screen" class="hidden min-h-screen flex flex-col">
-        <!-- Header / Navbar -->
         <header class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex justify-between items-center">
             <div class="flex items-center space-x-3">
                 <span class="text-2xl font-bold text-emerald-400">Trackify</span>
@@ -43,15 +78,12 @@
             </div>
         </header>
 
-        <!-- Conteúdo Principal -->
         <main class="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
-            <!-- Navegação de Abas -->
             <div class="flex border-b border-gray-700 space-x-4">
                 <button id="tab-ponto" class="pb-2 px-4 border-b-2 border-emerald-500 text-emerald-400 font-semibold">Lançamento de Ponto & Atividades</button>
                 <button id="tab-aprovação" class="pb-2 px-4 border-b-2 border-transparent text-gray-400 hover:text-gray-200 hidden">Aprovação (Gestor)</button>
             </div>
 
-            <!-- View: Colaborador (Apontamento) -->
             <section id="view-colaborador" class="space-y-6">
                 <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4">
                     <h2 class="text-lg font-semibold text-emerald-400">Apontamento Diário</h2>
@@ -71,7 +103,6 @@
                 </div>
             </section>
 
-            <!-- View: Gestor (Aprovação) -->
             <section id="view-gestor" class="hidden space-y-6">
                 <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
                     <h2 class="text-lg font-semibold text-emerald-400 mb-4">Painel de Aprovação de Horas</h2>
