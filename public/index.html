@@ -10,7 +10,7 @@
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen font-sans">
 
-    <!-- Tela de Autenticação (Login / Registo) -->
+    <!-- Tela de Autenticação (Login / Cadastro) -->
     <div id="auth-screen" class="flex items-center justify-center min-h-screen p-4">
         <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
             <h1 class="text-3xl font-bold text-center text-emerald-400 mb-1">Trackify</h1>
@@ -29,24 +29,38 @@
                 <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors">Entrar</button>
                 <div class="text-center mt-4">
                     <p class="text-xs text-gray-400">Ainda não tem conta? 
-                        <button type="button" id="btn-show-register" class="text-emerald-400 hover:underline font-semibold">Cadastrar-se</button>
+                        <button type="button" id="btn-show-register" class="text-emerald-400 hover:underline font-semibold cursor-pointer">Cadastrar-se</button>
                     </p>
                 </div>
             </form>
 
-            <!-- FORMULÁRIO DE CADASTRO -->
+            <!-- FORMULÁRIO DE CADASTRO DE COLABORADOR -->
             <form id="register-form" class="space-y-4 hidden">
+                <h2 class="text-lg font-semibold text-emerald-400 text-center mb-2">Cadastro de Colaborador</h2>
                 <div>
                     <label class="block text-sm text-gray-300">Nome Completo</label>
-                    <input type="text" id="reg-nome" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                    <input type="text" id="reg-nome" required placeholder="Ex: Rodrigo Aiosa" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-300">Sexo</label>
+                    <select id="reg-sexo" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                        <option value="">Selecione...</option>
+                        <option value="Masculino">Masculino</option>
+                        <option value="Feminino">Feminino</option>
+                        <option value="Outro">Outro / Prefiro não informar</option>
+                    </select>
                 </div>
                 <div>
                     <label class="block text-sm text-gray-300">E-mail</label>
-                    <input type="email" id="reg-email" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                    <input type="email" id="reg-email" required placeholder="seu@email.com" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-300">Celular</label>
+                    <input type="tel" id="reg-celular" required placeholder="(11) 99999-9999" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
                 </div>
                 <div>
                     <label class="block text-sm text-gray-300">Senha</label>
-                    <input type="password" id="reg-password" minlength="6" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                    <input type="password" id="reg-password" minlength="6" required placeholder="Mínimo 6 caracteres" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
                 </div>
                 <div>
                     <label class="block text-sm text-gray-300">Perfil</label>
@@ -55,10 +69,10 @@
                         <option value="gestor">Gestor / Admin</option>
                     </select>
                 </div>
-                <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors">Criar Conta</button>
+                <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors">Confirmar Cadastro</button>
                 <div class="text-center mt-4">
-                    <p class="text-xs text-gray-400">Já possui conta? 
-                        <button type="button" id="btn-show-login" class="text-emerald-400 hover:underline font-semibold">Fazer Login</button>
+                    <p class="text-xs text-gray-400">Já possui uma conta? 
+                        <button type="button" id="btn-show-login" class="text-emerald-400 hover:underline font-semibold cursor-pointer">Fazer Login</button>
                     </p>
                 </div>
             </form>
