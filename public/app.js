@@ -1,5 +1,5 @@
 const SUPABASE_URL = "https://yoywnhuewdxkfuqwrbbt.supabase.co";
-const SUPABASE_KEY = "sb_publishable_5LW2Y6nn91TMXBbK3CADMg_DvdsypxT"; // Substitua pela sua anon key do Supabase
+const SUPABASE_KEY = "sb_publishable_5LW2Y6nn91TMXBbK3CADMg_DvdsypxT"; // Cole aqui a sua Publishable Key (sb_publishable_...)
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -15,16 +15,21 @@ const btnShowLogin = document.getElementById("btn-show-login");
 const btnLogout = document.getElementById("btn-logout");
 const userDisplay = document.getElementById("user-display");
 
-// Alternar entre formulários
-btnShowRegister.addEventListener("click", () => {
-    loginForm.classList.add("hidden");
-    registerForm.classList.remove("hidden");
-});
+// Alternar para tela de Cadastro ao clicar em "Cadastrar-se"
+if (btnShowRegister) {
+    btnShowRegister.addEventListener("click", () => {
+        loginForm.classList.add("hidden");
+        registerForm.classList.remove("hidden");
+    });
+}
 
-btnShowLogin.addEventListener("click", () => {
-    registerForm.classList.add("hidden");
-    loginForm.classList.remove("hidden");
-});
+// Alternar para tela de Login ao clicar em "Fazer Login"
+if (btnShowLogin) {
+    btnShowLogin.addEventListener("click", () => {
+        registerForm.classList.add("hidden");
+        loginForm.classList.remove("hidden");
+    });
+}
 
 // Ação de Login
 loginForm.addEventListener("submit", async (e) => {
@@ -41,11 +46,13 @@ loginForm.addEventListener("submit", async (e) => {
     }
 });
 
-// Ação de Registo/Cadastro
+// Ação de Cadastro
 registerForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const nome = document.getElementById("reg-nome").value;
+    const sexo = document.getElementById("reg-sexo").value;
     const email = document.getElementById("reg-email").value;
+    const celular = document.getElementById("reg-celular").value;
     const password = document.getElementById("reg-password").value;
     const role = document.getElementById("reg-role").value;
 
@@ -56,15 +63,17 @@ registerForm.addEventListener("submit", async (e) => {
             data: {
                 nome_completo: nome,
                 username: email.split('@')[0],
+                sexo: sexo,
+                celular: celular,
                 role: role
             }
         }
     });
 
     if (error) {
-        alert("Erro ao registar utilizador: " + error.message);
+        alert("Erro ao cadastrar: " + error.message);
     } else {
-        alert("Registo efetuado com sucesso! Se a confirmação de e-mail estiver ativa no Supabase, verifique a sua caixa de entrada.");
+        alert("Cadastro realizado com sucesso! Faça login para continuar.");
         registerForm.classList.add("hidden");
         loginForm.classList.remove("hidden");
     }
@@ -76,7 +85,7 @@ btnLogout.addEventListener("click", async () => {
     location.reload();
 });
 
-// Carregar Aplicação pós Autenticação
+// Carregar App pós Login
 async function carregarApp(user) {
     authScreen.classList.add("hidden");
     appScreen.classList.remove("hidden");
