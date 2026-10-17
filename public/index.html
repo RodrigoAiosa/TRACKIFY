@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trackify - Apontamento e Aprovação de Horas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen font-sans">
+
+    <!-- Tela de Login -->
+    <div id="login-screen" class="flex items-center justify-center min-h-screen">
+        <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
+            <h1 class="text-3xl font-bold text-center text-emerald-400 mb-2">Trackify</h1>
+            <p class="text-gray-400 text-center mb-6">Gestão de Horas e Apontamentos</p>
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-300">E-mail</label>
+                    <input type="email" id="email" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-300">Senha</label>
+                    <input type="password" id="password" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500">
+                </div>
+                <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors">Entrar</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard Principal -->
+    <div id="app-screen" class="hidden min-h-screen flex flex-col">
+        <!-- Header / Navbar -->
+        <header class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <span class="text-2xl font-bold text-emerald-400">Trackify</span>
+                <span id="user-role-badge" class="px-2.5 py-1 text-xs rounded-full bg-emerald-900 text-emerald-300">Colaborador</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="user-display" class="text-gray-300 text-sm"></span>
+                <button id="btn-logout" class="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-sm rounded-md transition-colors">Sair</button>
+            </div>
+        </header>
+
+        <!-- Conteúdo Principal -->
+        <main class="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
+            <!-- Navegação de Abas -->
+            <div class="flex border-b border-gray-700 space-x-4">
+                <button id="tab-ponto" class="pb-2 px-4 border-b-2 border-emerald-500 text-emerald-400 font-semibold">Lançamento de Ponto & Atividades</button>
+                <button id="tab-aprovação" class="pb-2 px-4 border-b-2 border-transparent text-gray-400 hover:text-gray-200 hidden">Aprovação (Gestor)</button>
+            </div>
+
+            <!-- View: Colaborador (Apontamento) -->
+            <section id="view-colaborador" class="space-y-6">
+                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4">
+                    <h2 class="text-lg font-semibold text-emerald-400">Apontamento Diário</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-xs text-gray-400">Data</label>
+                            <input type="date" id="ponto-data" class="w-full mt-1 p-2 bg-gray-700 border border-gray-600 rounded-md text-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400">Modalidade</label>
+                            <select id="ponto-modalidade" class="w-full mt-1 p-2 bg-gray-700 border border-gray-600 rounded-md text-white">
+                                <option value="Presencial">Presencial</option>
+                                <option value="Remoto">Remoto</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- View: Gestor (Aprovação) -->
+            <section id="view-gestor" class="hidden space-y-6">
+                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                    <h2 class="text-lg font-semibold text-emerald-400 mb-4">Painel de Aprovação de Horas</h2>
+                    <p class="text-gray-400 text-sm">Selecione o colaborador e período para analisar e aprovar as atividades registradas.</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
