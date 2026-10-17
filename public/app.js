@@ -1,5 +1,5 @@
 const SUPABASE_URL = "https://yoywnhuewdxkfuqwrbbt.supabase.co";
-const SUPABASE_KEY = "SUA_SUPABASE_ANON_KEY"; // Substitua pela sua anon key do Supabase
+const SUPABASE_KEY = "sb_publishable_5LW2Y6nn91TMXBbK3CADMg_DvdsypxT"; // Substitua pela sua anon key do Supabase
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
