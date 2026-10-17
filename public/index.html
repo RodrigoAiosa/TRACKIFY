@@ -6,7 +6,6 @@
     <title>Trackify - Apontamento e Aprovação de Horas</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <link rel="stylesheet" href="styles.css">
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen font-sans">
 
@@ -63,11 +62,9 @@
                     <input type="password" id="reg-password" minlength="6" required placeholder="Mínimo 6 caracteres" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
                 </div>
                 <div>
-                    <label class="block text-sm text-gray-300">Perfil</label>
-                    <select id="reg-role" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
-                        <option value="colaborador">Colaborador</option>
-                        <option value="gestor">Gestor / Admin</option>
-                    </select>
+                    <label class="block text-sm text-gray-300">Confirmar Senha</label>
+                    <input type="password" id="reg-password-confirm" minlength="6" required placeholder="Repita a senha" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                    <p id="reg-password-error" class="hidden mt-1 text-xs text-red-400">As senhas não conferem.</p>
                 </div>
                 <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors">Confirmar Cadastro</button>
                 <div class="text-center mt-4">

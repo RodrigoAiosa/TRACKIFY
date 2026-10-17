@@ -77,20 +77,27 @@ document.addEventListener("DOMContentLoaded", () => {
             const email = document.getElementById("reg-email").value;
             const celular = document.getElementById("reg-celular").value;
             const password = document.getElementById("reg-password").value;
-            const role = document.getElementById("reg-role").value;
+            const passwordConfirm = document.getElementById("reg-password-confirm").value;
+            const passwordError = document.getElementById("reg-password-error");
+
+            if (password !== passwordConfirm) {
+                if (passwordError) passwordError.classList.remove("hidden");
+                return;
+            }
+            if (passwordError) passwordError.classList.add("hidden");
 
             if (!supabase) return alert("Erro ao conectar ao banco de dados.");
 
+            // O perfil (role) é sempre definido como 'colaborador' no banco.
             const { data, error } = await supabase.auth.signUp({
                 email,
                 password,
                 options: {
                     data: {
-                        nome_completo: nome,
+                        nome_completo: nome.trim(),
                         username: email.split('@')[0],
                         sexo: sexo,
-                        celular: celular,
-                        role: role
+                        celular: celular.trim()
                     }
                 }
             });
