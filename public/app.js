@@ -201,6 +201,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const veioDeRecuperacao = /type=recovery/.test(location.hash) || /type=recovery/.test(location.search);
     const linkComErro = /error_code=|error=access_denied/.test(location.hash);
     let emRecuperacao = false;
+    let trocaObrigatoria = false;
     function abrirRedefinicao() {
         emRecuperacao = true;
         authScreen.classList.remove("hidden");
@@ -223,9 +224,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const { data, error } = await sb.auth.updateUser({ password: senha });
         btn.disabled = false;
         if (error) { toast(msgErro(error), "erro"); return; }
+        if (trocaObrigatoria) await sb.rpc("concluir_troca_senha");
         toast("Senha alterada com sucesso.");
         history.replaceState(null, "", location.pathname);
         emRecuperacao = false;
+        trocaObrigatoria = false;
+        $("reset-aviso").classList.add("hidden");
         resetForm.reset();
         carregarApp(data.user);
     });
@@ -300,9 +304,17 @@ document.addEventListener("DOMContentLoaded", () => {
         userDisplay.textContent = user.email;
 
         const { data: p } = await sb.from("perfis")
-            .select("nome_completo, role, permite_fim_semana")
+            .select("*")   // "*" para funcionar mesmo antes de o banco ter a coluna trocar_senha
             .eq("id", user.id).maybeSingle();
         perfil = p;
+
+        // Senha redefinida pelo ADM: exige criar uma senha nova antes de usar o sistema
+        if (perfil && perfil.trocar_senha) {
+            trocaObrigatoria = true;
+            $("reset-aviso").classList.remove("hidden");
+            abrirRedefinicao();
+            return;
+        }
 
         if (perfil) {
             userDisplay.textContent = perfil.nome_completo || user.email;
@@ -1061,9 +1073,21 @@ document.addEventListener("DOMContentLoaded", () => {
                     </select>
                     <select data-f="gestor" class="${sel} ${u.role === "gestor" ? "hidden" : ""}">${opGer}</select>
                     <button type="button" data-eq-salvar class="px-3 py-1.5 text-xs rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">Salvar</button>
+                    <button type="button" data-eq-senha class="px-3 py-1.5 text-xs rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100">Redefinir senha</button>
                 </div></div>`;
         }).join("") || '<p class="text-sm text-gray-500">Nenhum usuário cadastrado.</p>';
     }
+
+    $("senha-copiar").addEventListener("click", async () => {
+        const v = $("senha-valor").value;
+        try { await navigator.clipboard.writeText(v); toast("Senha copiada."); }
+        catch (_) { $("senha-valor").select(); toast("Selecione e copie a senha manualmente.", "aviso"); }
+    });
+    $("senha-fechar").addEventListener("click", () => {
+        $("modal-senha").classList.add("hidden");
+        $("senha-valor").value = "";
+        $("senha-nome").textContent = "";
+    });
 
     $("equipe-lista").addEventListener("change", (e) => {
         if (e.target.dataset.f !== "role") return;
@@ -1072,6 +1096,26 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     $("equipe-lista").addEventListener("click", async (e) => {
+        const bs = e.target.closest("[data-eq-senha]");
+        if (bs) {
+            const linhaS = bs.closest("[data-u]");
+            const nome = linhaS.querySelector(".font-medium").textContent;
+            const sim = await confirmarModal({
+                titulo: "Redefinir a senha?",
+                texto: `Será gerada uma senha temporária para ${nome}. A senha atual deixa de valer e os acessos abertos dessa pessoa são encerrados.`,
+                botao: "Redefinir"
+            });
+            if (!sim) return;
+            bs.disabled = true;
+            const r = await sb.rpc("admin_redefinir_senha", { p_usuario: linhaS.dataset.u });
+            bs.disabled = false;
+            if (r.error || !r.data) { toast(msgErro(r.error || { message: "Não foi possível redefinir a senha." }), "erro"); return; }
+            $("senha-nome").textContent = nome;
+            $("senha-valor").value = r.data;
+            $("modal-senha").classList.remove("hidden");
+            $("senha-valor").select();
+            return;
+        }
         const b = e.target.closest("[data-eq-salvar]");
         if (!b) return;
         const linha = b.closest("[data-u]");

@@ -56,7 +56,8 @@
 
             <!-- RECUPERAR SENHA: DEFINIR A NOVA SENHA (aberto pelo link do e-mail) -->
             <form id="reset-form" class="space-y-4 hidden">
-                <h2 class="text-lg font-semibold text-emerald-400 text-center mb-2">Criar nova senha</h2>
+                <h2 id="reset-titulo" class="text-lg font-semibold text-emerald-400 text-center mb-2">Criar nova senha</h2>
+                <p id="reset-aviso" class="hidden text-sm text-amber-300">Sua senha foi redefinida pelo administrador. Crie uma senha nova e só sua para continuar.</p>
                 <div>
                     <label for="reset-password" class="block text-sm text-gray-300">Nova senha</label>
                     <input type="password" id="reset-password" required minlength="6" autocomplete="new-password" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
@@ -377,6 +378,20 @@
     </div>
 
     <!-- Avisos -->
+    <div id="modal-senha" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="senha-titulo">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-6 w-full max-w-sm space-y-4">
+            <h3 id="senha-titulo" class="text-lg font-semibold text-gray-100">Senha temporária gerada</h3>
+            <p class="text-sm text-gray-300">Repasse esta senha para <strong id="senha-nome"></strong>. Ela aparece <strong>só desta vez</strong> e, no primeiro acesso, a pessoa será obrigada a criar uma senha nova.</p>
+            <div class="flex items-center gap-2">
+                <input type="text" id="senha-valor" readonly class="flex-1 p-2.5 bg-gray-900 border border-gray-600 rounded-lg text-emerald-300 font-mono text-lg tracking-wider outline-none">
+                <button type="button" id="senha-copiar" class="px-3 py-2.5 bg-gray-700 hover:bg-gray-600 text-sm text-gray-100 rounded-lg">Copiar</button>
+            </div>
+            <div class="flex justify-end">
+                <button type="button" id="senha-fechar" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-sm text-white font-semibold rounded-lg">Já anotei, fechar</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2" aria-live="polite"></div>
 
     <script src="app.js"></script>
