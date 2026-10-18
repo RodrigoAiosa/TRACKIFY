@@ -230,28 +230,8 @@ language sql stable security invoker set search_path = public as $$
    order by 1;
 $$;
 
--- 11) Dias úteis (seg-sex) sem lançamento, até hoje. Feriados e folgas não são descontados.
-create or replace function public.rel_dias_sem_lancamento(
-  p_de date default date_trunc('month', (now() at time zone 'America/Sao_Paulo'))::date,
-  p_ate date default (now() at time zone 'America/Sao_Paulo')::date)
-returns table (colaborador text, gerente text, dias_uteis bigint, dias_lancados bigint, dias_sem_lancamento bigint)
-language sql stable security invoker set search_path = public as $$
-  with uteis as (
-    select d::date as dia
-      from generate_series(p_de, least(p_ate, (now() at time zone 'America/Sao_Paulo')::date), interval '1 day') d
-     where extract(isodow from d) < 6)
-  select u.nome_completo, coalesce(g.nome_completo, 'Sem gerente'),
-         (select count(*) from uteis),
-         count(*) filter (where p.id is not null),
-         count(*) filter (where p.id is null)
-    from public.perfis u
-    left join public.perfis g on g.id = u.gestor_id
-    cross join uteis
-    left join public.apontamentos_ponto p on p.usuario_id = u.id and p.data = uteis.dia
-   where u.role <> 'admin'
-   group by u.id, u.nome_completo, g.nome_completo
-   order by 5 desc, 1;
-$$;
+-- 11) Dias úteis sem lançamento: definido em 20261019_calendario_banco_horas_avisos_auditoria.sql
+--     (desconta feriados, férias/atestados/folgas e dias anteriores à criação da conta).
 
 -- 12) Pendências de aprovação por idade e gerente (idade = dias desde a data da atividade)
 create or replace function public.rel_pendencias_por_idade(
