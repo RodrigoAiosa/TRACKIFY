@@ -80,6 +80,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (/same password|different from the old/i.test(m)) return "A nova senha precisa ser diferente da atual.";
         if (/at least \d+ characters|weak.?password|Password should/i.test(m)) return "Senha muito fraca. Use pelo menos 6 caracteres.";
         if (/session missing|expired|invalid.*(token|link)/i.test(m)) return "O link expirou ou já foi usado. Peça um novo em \"Esqueci minha senha\".";
+        if (/banned/i.test(m)) return "Esta conta está inativa. Fale com o administrador.";
         if (/rate limit/i.test(m)) return "Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente.";
         if (/row-level security|permission denied/i.test(m)) return "Operação não permitida: o registro pode estar travado ou já avaliado pelo gestor.";
         return m;
@@ -308,6 +309,17 @@ document.addEventListener("DOMContentLoaded", () => {
             .eq("id", user.id).maybeSingle();
         perfil = p;
 
+        // Conta inativada pelo ADM: encerra o acesso e volta ao login
+        if (perfil && perfil.ativo === false) {
+            await sb.auth.signOut();
+            usuario = null; perfil = null;
+            appScreen.classList.add("hidden");
+            authScreen.classList.remove("hidden");
+            mostrarTelaAuth(loginForm);
+            toast("Esta conta está inativa. Fale com o administrador.", "erro");
+            return;
+        }
+
         // Senha redefinida pelo ADM: exige criar uma senha nova antes de usar o sistema
         if (perfil && perfil.trocar_senha) {
             trocaObrigatoria = true;
@@ -488,9 +500,19 @@ document.addEventListener("DOMContentLoaded", () => {
         el.className = `px-2.5 py-1 text-xs rounded-full ${classes}`;
     }
 
+    // Meses fechados pelo ADM ("YYYY-MM"). Se a tabela ainda não existir, nada é bloqueado na tela.
+    let mesesFechados = new Set();
+    async function carregarMesesFechados() {
+        const { data, error } = await sb.from("fechamentos_mes").select("mes");
+        mesesFechados = new Set(error ? [] : (data || []).map((x) => String(x.mes).slice(0, 7)));
+    }
+    const mesFechado = (dataStr) => mesesFechados.has(String(dataStr || "").slice(0, 7));
+
     async function carregarDia(data) {
         if (!data || !usuario) return;
         const minhaReq = ++reqDia;
+        await carregarMesesFechados();
+        if (minhaReq !== reqDia) return;
 
         const { data: ponto, error } = await sb.from("apontamentos_ponto")
             .select("*, apontamentos_atividades(id, status_aprovacao, duracao_realizada_minutos)")
@@ -520,7 +542,8 @@ document.addEventListener("DOMContentLoaded", () => {
             mostrarStatusDia("");
         }
 
-        $("btn-confirmar").disabled = !!(ponto && ponto.registro_travado);
+        if (mesFechado(data)) mostrarStatusDia("Mês fechado — não aceita alterações", "bg-red-900 text-red-300");
+        $("btn-confirmar").disabled = !!(ponto && ponto.registro_travado) || mesFechado(data);
         atualizarTotais();
     }
 
@@ -597,7 +620,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } finally {
             salvando = false;
             btn.textContent = "Confirmar lançamento";
-            btn.disabled = !!(pontoDoDia && pontoDoDia.registro_travado);
+            btn.disabled = !!(pontoDoDia && pontoDoDia.registro_travado) || mesFechado($("ponto-data").value);
         }
     });
 
@@ -626,11 +649,14 @@ document.addEventListener("DOMContentLoaded", () => {
             $("lancamentos-lista").innerHTML = `<p class="text-sm text-red-400">Não foi possível carregar seus lançamentos: ${esc(msgErro(error))}</p>`;
             return;
         }
+        await carregarMesesFechados();
         renderLancamentos(data || []);
     }
 
+    let atvPorId = {};
     function renderLancamentos(lista) {
         const box = $("lancamentos-lista");
+        atvPorId = {};
         if (!lista.length) {
             box.innerHTML = `<p class="text-sm text-gray-500">Você ainda não tem lançamentos nos últimos 60 dias.</p>`;
             return;
@@ -640,14 +666,16 @@ document.addEventListener("DOMContentLoaded", () => {
             const atv = (p.apontamentos_atividades || [])
                 .slice().sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
             const avaliado = atv.some((a) => a.registro_travado || a.status_aprovacao !== "Pendente");
-            const diaTravado = !!p.registro_travado || avaliado;
+            const fechado = mesFechado(p.data);
+            const diaTravado = !!p.registro_travado || avaliado || fechado;
             const periodos = [1, 2, 3]
                 .filter((n) => p[`entrada_${n}`] && p[`saida_${n}`])
                 .map((n) => `${hhmm(p[`entrada_${n}`])}–${hhmm(p[`saida_${n}`])}`).join(" · ");
             const minAtv = atv.reduce((s, a) => s + (a.duracao_realizada_minutos || 0), 0);
 
             const linhasAtv = atv.length ? atv.map((a) => {
-                const podeExcluir = !a.registro_travado && a.status_aprovacao === "Pendente";
+                atvPorId[a.id] = a;
+                const podeExcluir = !fechado && !a.registro_travado && a.status_aprovacao === "Pendente";
                 return `
                 <div class="flex items-start justify-between gap-3 py-3 border-t border-gray-700">
                     <div class="min-w-0">
@@ -658,6 +686,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
                         <span class="px-2 py-0.5 text-xs rounded-full ${STATUS_CORES[a.status_aprovacao] || "bg-gray-700 text-gray-300"}">${esc(a.status_aprovacao)}</span>
+                        ${podeExcluir ? `<button type="button" data-editar-atv="${a.id}" class="text-xs px-2.5 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100">Editar</button>` : ""}
                         ${podeExcluir ? `<button type="button" data-excluir-atv="${a.id}" data-desc="${esc(a.descricao_atividade)}" class="text-xs px-2.5 py-1 rounded-md bg-red-700 hover:bg-red-600 text-white">Excluir</button>` : ""}
                     </div>
                 </div>`;
@@ -671,8 +700,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         <p class="text-xs text-gray-400 mt-1">${esc(p.modalidade)} · ${esc(periodos || "sem horários")} · ponto ${fmtMin(Number(p.total_diario_horas) * 60)} · atividades ${fmtMin(minAtv)}</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        ${diaTravado ? `<span class="px-2 py-0.5 text-xs rounded-full bg-gray-700 text-gray-300" title="Já avaliado ou travado pelo gestor">Em avaliação / travado</span>` : ""}
-                        ${!p.registro_travado ? `<button type="button" data-editar="${p.data}" class="text-xs px-3 py-1.5 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100">Editar</button>` : ""}
+                        ${diaTravado ? `<span class="px-2 py-0.5 text-xs rounded-full bg-gray-700 text-gray-300" title="${fechado ? "O ADM fechou este mês" : "Já avaliado ou travado pelo gestor"}">${fechado ? "Mês fechado" : "Em avaliação / travado"}</span>` : ""}
+                        ${!p.registro_travado && !fechado ? `<button type="button" data-editar="${p.data}" class="text-xs px-3 py-1.5 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100">Editar</button>` : ""}
                         ${!diaTravado ? `<button type="button" data-excluir-dia="${p.id}" data-data="${p.data}" data-qtd="${atv.length}" class="text-xs px-3 py-1.5 rounded-md bg-red-700 hover:bg-red-600 text-white">Excluir dia</button>` : ""}
                     </div>
                 </div>
@@ -684,12 +713,18 @@ document.addEventListener("DOMContentLoaded", () => {
     $("lancamentos-lista").addEventListener("click", async (e) => {
         const editar = e.target.closest("[data-editar]");
         const excluirAtv = e.target.closest("[data-excluir-atv]");
+        const editarAtv = e.target.closest("[data-editar-atv]");
         const excluirDia = e.target.closest("[data-excluir-dia]");
 
         if (editar) {
             $("ponto-data").value = editar.dataset.editar;
             await carregarDia(editar.dataset.editar);
             window.scrollTo({ top: 0, behavior: "smooth" });
+            return;
+        }
+
+        if (editarAtv) {
+            abrirEdicaoAtividade(atvPorId[editarAtv.dataset.editarAtv]);
             return;
         }
 
@@ -724,6 +759,66 @@ document.addEventListener("DOMContentLoaded", () => {
 
             toast("Dia excluído.");
             await Promise.all([carregarLancamentos(), carregarDia($("ponto-data").value)]);
+        }
+    });
+
+    // ---------------------------------------------------------------
+    // Editar atividade ainda pendente
+    // ---------------------------------------------------------------
+    let atvEmEdicao = null;
+    function opcoesCom(lista, nomeCampo, atualId) {
+        const itens = lista.slice();
+        return itens.map((x) => `<option value="${x.id}" ${x.id === atualId ? "selected" : ""}>${esc(x[nomeCampo])}</option>`).join("");
+    }
+    function abrirEdicaoAtividade(a) {
+        if (!a) return;
+        atvEmEdicao = a;
+        // o projeto/tipo atual pode ter sido inativado depois: mantém como opção
+        const projs = projetos.slice(), tps = tipos.slice();
+        if (a.projeto_id && !projs.some((x) => x.id === a.projeto_id) && a.projetos) projs.push({ id: a.projeto_id, nome_projeto: a.projetos.nome_projeto + " (inativo)" });
+        if (a.tipo_atividade_id && !tps.some((x) => x.id === a.tipo_atividade_id) && a.tipos_atividade) tps.push({ id: a.tipo_atividade_id, nome: a.tipos_atividade.nome + " (inativo)" });
+        $("ed-projeto").innerHTML = opcoesCom(projs, "nome_projeto", a.projeto_id);
+        $("ed-tipo").innerHTML = opcoesCom(tps, "nome", a.tipo_atividade_id);
+        $("ed-prioridade").value = String(a.prioridade_dia || 1);
+        $("ed-descricao").value = a.descricao_atividade || "";
+        $("ed-prevista").value = a.duracao_prevista_minutos ?? 0;
+        $("ed-realizada").value = a.duracao_realizada_minutos ?? 0;
+        $("ed-intercorrencias").value = a.intercorrencias || "";
+        $("ed-data").textContent = `Dia ${fmtData(a.data)}`;
+        $("ed-erro").classList.add("hidden");
+        $("modal-atv").classList.remove("hidden");
+        $("ed-descricao").focus();
+    }
+    function fecharEdicaoAtividade() { $("modal-atv").classList.add("hidden"); atvEmEdicao = null; }
+    $("ed-cancelar").addEventListener("click", fecharEdicaoAtividade);
+    $("ed-salvar").addEventListener("click", async () => {
+        if (!atvEmEdicao) return;
+        const erro = (t) => { $("ed-erro").textContent = t; $("ed-erro").classList.remove("hidden"); };
+        const descricao = $("ed-descricao").value.trim();
+        const prevista = parseInt($("ed-prevista").value || "0", 10);
+        const realizada = parseInt($("ed-realizada").value || "0", 10);
+        if (!descricao) return erro("Descreva a atividade.");
+        if (isNaN(prevista) || prevista < 0 || isNaN(realizada) || realizada < 0) return erro("Informe durações válidas, em minutos.");
+        const btn = $("ed-salvar");
+        btn.disabled = true;
+        try {
+            const { data, error } = await sb.from("apontamentos_atividades").update({
+                projeto_id: Number($("ed-projeto").value) || null,
+                tipo_atividade_id: Number($("ed-tipo").value) || null,
+                descricao_atividade: descricao,
+                prioridade_dia: Number($("ed-prioridade").value) || 1,
+                duracao_prevista_minutos: prevista,
+                duracao_realizada_minutos: realizada,
+                intercorrencias: $("ed-intercorrencias").value.trim() || null,
+                atualizado_em: new Date().toISOString()
+            }).eq("id", atvEmEdicao.id).select("id");
+            if (error) return erro(msgErro(error));
+            if (!data || !data.length) return erro("Não foi possível salvar: a atividade já foi avaliada ou o mês foi fechado.");
+            fecharEdicaoAtividade();
+            toast("Atividade atualizada.");
+            await Promise.all([carregarLancamentos(), carregarDia($("ponto-data").value)]);
+        } finally {
+            btn.disabled = false;
         }
     });
 
@@ -855,7 +950,7 @@ document.addEventListener("DOMContentLoaded", () => {
         let perfis, pontos, atvs, projs, tps;
         try {
             [perfis, pontos, atvs, projs, tps] = await Promise.all([
-                paginar(() => sb.from("perfis").select("id, nome_completo, email, role, gestor_id").order("nome_completo").order("id")),
+                paginar(() => sb.from("perfis").select("*").order("nome_completo").order("id")),
                 paginar(() => sb.from("apontamentos_ponto").select("*").gte("data", de).lte("data", ate).order("data").order("id")),
                 paginar(() => sb.from("apontamentos_atividades").select("*").gte("data", de).lte("data", ate).order("data").order("id")),
                 paginar(() => sb.from("projetos").select("id, nome_projeto").order("id")),
@@ -1005,7 +1100,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // ---------- Dias úteis sem lançamento ----------
         const uteis = diasUteis(de, ate < hojeISO ? ate : hojeISO);
         secoes.push(tabelaRel("Dias úteis sem lançamento", ["Colaborador", "Gerente", "Dias úteis", "Lançados", "Sem lançamento"],
-            porUser.map((x) => { const sem = uteis.filter((d) => !x.datas.has(d)).length; return [x.u.nome_completo, gerenteDe(x.u.id), uteis.length, x.dias, sem]; })
+            porUser.filter((x) => x.u.ativo !== false).map((x) => { const sem = uteis.filter((d) => !x.datas.has(d)).length; return [x.u.nome_completo, gerenteDe(x.u.id), uteis.length, x.dias, sem]; })
                 .sort((a, b) => b[4] - a[4]),
             "Considera segunda a sexta até hoje; feriados e folgas não são descontados."));
 
@@ -1046,13 +1141,17 @@ document.addEventListener("DOMContentLoaded", () => {
     // ---------------------------------------------------------------
     // Equipe (somente ADM): define gerentes e a equipe de cada um
     // ---------------------------------------------------------------
+    let equipePorId = {};
     async function carregarEquipe() {
+        carregarFechamentos();
         const lista = $("equipe-lista");
         const { data, error } = await sb.from("perfis")
-            .select("id, nome_completo, email, role, gestor_id").order("nome_completo");
+            .select("*").order("nome_completo");
         if (error) { lista.innerHTML = `<p class="text-sm text-red-400">${esc(msgErro(error))}</p>`; return; }
         const todos = data || [];
-        const gerentes = todos.filter((x) => x.role === "gestor");
+        equipePorId = {};
+        todos.forEach((x) => { equipePorId[x.id] = x; });
+        const gerentes = todos.filter((x) => x.role === "gestor" && x.ativo !== false);
         const rotulo = { colaborador: "Colaborador", gestor: "Gerente", admin: "ADM" };
         const sel = "p-1.5 bg-gray-700 border border-gray-600 rounded-md text-sm text-white";
         lista.innerHTML = todos.map((u) => {
@@ -1064,6 +1163,14 @@ document.addEventListener("DOMContentLoaded", () => {
             const opGer = ['<option value="">Sem gerente</option>']
                 .concat(gerentes.filter((g) => g.id !== u.id).map((g) =>
                     `<option value="${g.id}" ${g.id === u.gestor_id ? "selected" : ""}>${esc(g.nome_completo)}</option>`)).join("");
+            const inativo = u.ativo === false;
+            const btnAtivo = `<button type="button" data-eq-ativo="${inativo ? "1" : "0"}" class="px-3 py-1.5 text-xs rounded-md ${inativo ? "bg-emerald-700 hover:bg-emerald-600" : "bg-red-800 hover:bg-red-700"} text-white">${inativo ? "Reativar" : "Inativar"}</button>`;
+            const btnEditar = `<button type="button" data-eq-editar class="px-3 py-1.5 text-xs rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100">Editar</button>`;
+            if (inativo) {
+                return `<div class="flex flex-wrap items-center justify-between gap-3 p-3 bg-gray-900 rounded-lg border border-gray-700 opacity-80" data-u="${u.id}">
+                <div class="min-w-0"><div class="font-medium text-gray-400 line-through">${esc(u.nome_completo)}</div><div class="text-xs text-gray-500">${esc(u.email)} · <span class="text-red-300 no-underline">Inativo</span></div></div>
+                <div class="flex flex-wrap items-center gap-2">${btnEditar}${btnAtivo}</div></div>`;
+            }
             return `<div class="flex flex-wrap items-center justify-between gap-3 p-3 bg-gray-900 rounded-lg border border-gray-700" data-u="${u.id}">
                 <div class="min-w-0"><div class="font-medium text-gray-100">${esc(u.nome_completo)}</div><div class="text-xs text-gray-400">${esc(u.email)}</div></div>
                 <div class="flex flex-wrap items-center gap-2">
@@ -1074,9 +1181,77 @@ document.addEventListener("DOMContentLoaded", () => {
                     <select data-f="gestor" class="${sel} ${u.role === "gestor" ? "hidden" : ""}">${opGer}</select>
                     <button type="button" data-eq-salvar class="px-3 py-1.5 text-xs rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">Salvar</button>
                     <button type="button" data-eq-senha class="px-3 py-1.5 text-xs rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100">Redefinir senha</button>
+                    ${btnEditar}${btnAtivo}
                 </div></div>`;
         }).join("") || '<p class="text-sm text-gray-500">Nenhum usuário cadastrado.</p>';
     }
+
+    let pessoaEmEdicao = null;
+    $("pe-cancelar").addEventListener("click", () => { $("modal-pessoa").classList.add("hidden"); pessoaEmEdicao = null; });
+    $("pe-salvar").addEventListener("click", async () => {
+        if (!pessoaEmEdicao) return;
+        const nome = $("pe-nome").value.replace(/\s+/g, " ").trim();
+        if (nome.length < 3) { $("pe-erro").textContent = "Informe o nome completo."; $("pe-erro").classList.remove("hidden"); return; }
+        const btn = $("pe-salvar");
+        btn.disabled = true;
+        const r = await sb.rpc("admin_editar_perfil", {
+            p_usuario: pessoaEmEdicao.id, p_nome: nome, p_celular: $("pe-celular").value.trim(),
+            p_sexo: $("pe-sexo").value, p_fim_semana: !!pessoaEmEdicao.permite_fim_semana
+        });
+        btn.disabled = false;
+        if (r.error) { $("pe-erro").textContent = msgErro(r.error); $("pe-erro").classList.remove("hidden"); return; }
+        $("modal-pessoa").classList.add("hidden");
+        pessoaEmEdicao = null;
+        toast("Cadastro atualizado.");
+        carregarEquipe();
+    });
+
+    // Fechamento mensal (ADM): lista os últimos 12 meses já encerrados
+    async function carregarFechamentos() {
+        const box = $("fech-lista");
+        const { data, error } = await sb.from("fechamentos_mes").select("mes, fechado_em, observacao");
+        if (error) {
+            box.innerHTML = `<p class="text-sm text-amber-300">Fechamento mensal indisponível: o banco ainda não recebeu a atualização (rode o script 20261018_cadastros_edicao_fechamento.sql).</p>`;
+            return;
+        }
+        const fechados = new Map((data || []).map((x) => [String(x.mes).slice(0, 10), x]));
+        const hoje = new Date();
+        let linhas = "";
+        for (let i = 1; i <= 12; i++) {
+            const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+            const mes = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+            const f = fechados.get(mes);
+            const rotulo = `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+            linhas += `<div class="flex flex-wrap items-center justify-between gap-3 p-3 bg-gray-900 rounded-lg border border-gray-700" data-mes="${mes}">
+                <div><div class="font-medium text-gray-100">${rotulo}</div>
+                <div class="text-xs text-gray-400">${f ? `Fechado em ${fmtData(String(f.fechado_em).slice(0, 10))}${f.observacao ? " · " + esc(f.observacao) : ""}` : "Aberto"}</div></div>
+                <button type="button" data-fech="${f ? "reabrir" : "fechar"}" class="px-3 py-1.5 text-xs rounded-md ${f ? "bg-gray-700 hover:bg-gray-600 text-gray-100" : "bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"}">${f ? "Reabrir" : "Fechar mês"}</button></div>`;
+        }
+        box.innerHTML = linhas;
+    }
+    $("fech-lista").addEventListener("click", async (e) => {
+        const b = e.target.closest("[data-fech]");
+        if (!b) return;
+        const mes = b.closest("[data-mes]").dataset.mes;
+        const rotulo = `${mes.slice(5, 7)}/${mes.slice(0, 4)}`;
+        const reabrir = b.dataset.fech === "reabrir";
+        const sim = await confirmarModal({
+            titulo: reabrir ? `Reabrir ${rotulo}?` : `Fechar ${rotulo}?`,
+            texto: reabrir
+                ? "Colaboradores e gerentes voltam a poder editar e avaliar lançamentos desse mês."
+                : "Ninguém mais poderá lançar, editar, excluir ou avaliar atividades desse mês. Só é possível se não houver atividades pendentes.",
+            botao: reabrir ? "Reabrir" : "Fechar mês"
+        });
+        if (!sim) return;
+        b.disabled = true;
+        const r = reabrir
+            ? await sb.rpc("admin_reabrir_mes", { p_mes: mes })
+            : await sb.rpc("admin_fechar_mes", { p_mes: mes });
+        b.disabled = false;
+        if (r.error) { toast(msgErro(r.error), "erro"); return; }
+        toast(reabrir ? "Mês reaberto." : "Mês fechado.");
+        carregarFechamentos();
+    });
 
     $("senha-copiar").addEventListener("click", async () => {
         const v = $("senha-valor").value;
@@ -1096,6 +1271,42 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     $("equipe-lista").addEventListener("click", async (e) => {
+        const bAtivo = e.target.closest("[data-eq-ativo]");
+        if (bAtivo) {
+            const linhaA = bAtivo.closest("[data-u]");
+            const nomeA = (equipePorId[linhaA.dataset.u] || {}).nome_completo || "esta pessoa";
+            const reativar = bAtivo.dataset.eqAtivo === "1";
+            const sim = await confirmarModal({
+                titulo: reativar ? "Reativar o acesso?" : "Inativar esta pessoa?",
+                texto: reativar
+                    ? `${nomeA} volta a poder entrar no sistema.`
+                    : `${nomeA} não conseguirá mais entrar e os acessos abertos serão encerrados. Todo o histórico de lançamentos é mantido. Você pode reativar depois.`,
+                botao: reativar ? "Reativar" : "Inativar"
+            });
+            if (!sim) return;
+            bAtivo.disabled = true;
+            const r = await sb.rpc("admin_definir_ativo", { p_usuario: linhaA.dataset.u, p_ativo: reativar });
+            bAtivo.disabled = false;
+            if (r.error) { toast(msgErro(r.error), "erro"); return; }
+            toast(reativar ? "Acesso reativado." : "Pessoa inativada.");
+            carregarEquipe();
+            return;
+        }
+        const bEd = e.target.closest("[data-eq-editar]");
+        if (bEd) {
+            const u = equipePorId[bEd.closest("[data-u]").dataset.u];
+            if (!u) return;
+            pessoaEmEdicao = u;
+            $("pe-titulo").textContent = "Editar cadastro";
+            $("pe-email").textContent = u.email || "";
+            $("pe-nome").value = u.nome_completo || "";
+            $("pe-celular").value = u.celular || "";
+            $("pe-sexo").value = u.sexo || "";
+            $("pe-erro").classList.add("hidden");
+            $("modal-pessoa").classList.remove("hidden");
+            $("pe-nome").focus();
+            return;
+        }
         const bs = e.target.closest("[data-eq-senha]");
         if (bs) {
             const linhaS = bs.closest("[data-u]");
