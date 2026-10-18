@@ -129,13 +129,29 @@ document.addEventListener("DOMContentLoaded", () => {
     // ---------------------------------------------------------------
     // Login
     // ---------------------------------------------------------------
+    let modoAdm = false;
+    $("btn-login-adm").addEventListener("click", () => {
+        modoAdm = !modoAdm;
+        const campo = $("login-email");
+        campo.type = modoAdm ? "text" : "email";
+        campo.value = "";
+        campo.autocomplete = modoAdm ? "username" : "email";
+        $("login-email-label").textContent = modoAdm ? "Usuário ADM" : "E-mail";
+        $("btn-login-adm").textContent = modoAdm ? "Voltar ao login com e-mail" : "Entrar como ADM do sistema";
+        campo.focus();
+    });
     if (loginForm) {
         loginForm.addEventListener("submit", async (e) => {
             e.preventDefault();
             if (!sb) return toast("Erro ao conectar ao banco de dados.", "erro");
 
-            const email = $("login-email").value;
+            let email = $("login-email").value.trim();
             const password = $("login-password").value;
+            if (modoAdm) {
+                const r = await sb.rpc("email_do_admin", { p_usuario: email });
+                if (r.error || !r.data) return toast("Usuário ou senha incorretos.", "erro");
+                email = r.data;
+            }
             const { data, error } = await sb.auth.signInWithPassword({ email, password });
 
             if (error) {
@@ -229,6 +245,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const tabAprovacao = $("tab-aprovação");
                 if (tabAprovacao) tabAprovacao.classList.remove("hidden");
                 $("tab-projetos").classList.remove("hidden");
+                if (perfil.role === "admin") $("tab-equipe").classList.remove("hidden");
                 atualizarPendentes();
             }
         }
@@ -637,6 +654,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const colab = qual === "ponto";
         const gest = qual === "gestor";
         const proj = qual === "projetos";
+        const eqp = qual === "equipe";
+        $("view-equipe").classList.toggle("hidden", !eqp);
         $("view-colaborador").classList.toggle("hidden", !colab);
         $("view-gestor").classList.toggle("hidden", !gest);
         $("view-projetos").classList.toggle("hidden", !proj);
@@ -650,13 +669,72 @@ document.addEventListener("DOMContentLoaded", () => {
         marca($("tab-ponto"), colab);
         marca($("tab-aprovação"), gest);
         marca($("tab-projetos"), proj);
+        marca($("tab-equipe"), eqp);
 
         if (gest && ehGestor()) iniciarGestor();
         if (proj && ehGestor()) carregarProjetos();
+        if (eqp && perfil && perfil.role === "admin") carregarEquipe();
     }
     $("tab-ponto").addEventListener("click", () => ativarAba("ponto"));
     $("tab-aprovação").addEventListener("click", () => ativarAba("gestor"));
     $("tab-projetos").addEventListener("click", () => ativarAba("projetos"));
+    $("tab-equipe").addEventListener("click", () => ativarAba("equipe"));
+
+    // ---------------------------------------------------------------
+    // Equipe (somente ADM): define gerentes e a equipe de cada um
+    // ---------------------------------------------------------------
+    async function carregarEquipe() {
+        const lista = $("equipe-lista");
+        const { data, error } = await sb.from("perfis")
+            .select("id, nome_completo, email, role, gestor_id").order("nome_completo");
+        if (error) { lista.innerHTML = `<p class="text-sm text-red-400">${esc(msgErro(error))}</p>`; return; }
+        const todos = data || [];
+        const gerentes = todos.filter((x) => x.role === "gestor");
+        const rotulo = { colaborador: "Colaborador", gestor: "Gerente", admin: "ADM" };
+        const sel = "p-1.5 bg-gray-700 border border-gray-600 rounded-md text-sm text-white";
+        lista.innerHTML = todos.map((u) => {
+            if (u.role === "admin") {
+                return `<div class="flex flex-wrap items-center justify-between gap-3 p-3 bg-gray-900 rounded-lg border border-gray-700">
+                    <div><div class="font-medium text-gray-100">${esc(u.nome_completo)}</div><div class="text-xs text-gray-400">${esc(u.email)}</div></div>
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-purple-900 text-purple-300">${rotulo.admin}</span></div>`;
+            }
+            const opGer = ['<option value="">Sem gerente</option>']
+                .concat(gerentes.filter((g) => g.id !== u.id).map((g) =>
+                    `<option value="${g.id}" ${g.id === u.gestor_id ? "selected" : ""}>${esc(g.nome_completo)}</option>`)).join("");
+            return `<div class="flex flex-wrap items-center justify-between gap-3 p-3 bg-gray-900 rounded-lg border border-gray-700" data-u="${u.id}">
+                <div class="min-w-0"><div class="font-medium text-gray-100">${esc(u.nome_completo)}</div><div class="text-xs text-gray-400">${esc(u.email)}</div></div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <select data-f="role" class="${sel}">
+                        <option value="colaborador" ${u.role === "colaborador" ? "selected" : ""}>Colaborador</option>
+                        <option value="gestor" ${u.role === "gestor" ? "selected" : ""}>Gerente</option>
+                    </select>
+                    <select data-f="gestor" class="${sel} ${u.role === "gestor" ? "hidden" : ""}">${opGer}</select>
+                    <button type="button" data-eq-salvar class="px-3 py-1.5 text-xs rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">Salvar</button>
+                </div></div>`;
+        }).join("") || '<p class="text-sm text-gray-500">Nenhum usuário cadastrado.</p>';
+    }
+
+    $("equipe-lista").addEventListener("change", (e) => {
+        if (e.target.dataset.f !== "role") return;
+        const linha = e.target.closest("[data-u]");
+        linha.querySelector('[data-f="gestor"]').classList.toggle("hidden", e.target.value === "gestor");
+    });
+
+    $("equipe-lista").addEventListener("click", async (e) => {
+        const b = e.target.closest("[data-eq-salvar]");
+        if (!b) return;
+        const linha = b.closest("[data-u]");
+        const funcao = linha.querySelector('[data-f="role"]').value;
+        const gerente = linha.querySelector('[data-f="gestor"]').value || null;
+        b.disabled = true;
+        const { error } = await sb.rpc("admin_definir_perfil", {
+            p_usuario: linha.dataset.u, p_role: funcao, p_gestor: funcao === "gestor" ? null : gerente
+        });
+        b.disabled = false;
+        if (error) { toast(msgErro(error), "erro"); return; }
+        toast("Perfil atualizado.");
+        carregarEquipe();
+    });
 
     // ---------------------------------------------------------------
     // Projetos (gestor/admin)

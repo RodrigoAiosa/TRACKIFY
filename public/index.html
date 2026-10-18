@@ -18,7 +18,7 @@
             <!-- FORMULÁRIO DE LOGIN -->
             <form id="login-form" class="space-y-4">
                 <div>
-                    <label class="block text-sm text-gray-300">E-mail</label>
+                    <label id="login-email-label" for="login-email" class="block text-sm text-gray-300">E-mail</label>
                     <input type="email" id="login-email" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
                 </div>
                 <div>
@@ -26,6 +26,9 @@
                     <input type="password" id="login-password" required class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
                 </div>
                 <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors">Entrar</button>
+                <div class="text-center">
+                    <button type="button" id="btn-login-adm" class="text-xs text-gray-400 hover:text-emerald-400 underline cursor-pointer">Entrar como ADM do sistema</button>
+                </div>
                 <div class="text-center mt-4">
                     <p class="text-xs text-gray-400">Ainda não tem conta? 
                         <button type="button" id="btn-show-register" class="text-emerald-400 hover:underline font-semibold cursor-pointer">Cadastrar-se</button>
@@ -93,6 +96,7 @@
             <div class="flex border-b border-gray-700 space-x-4">
                 <button id="tab-ponto" class="pb-2 px-4 border-b-2 border-emerald-500 text-emerald-400 font-semibold">Lançamento de Ponto & Atividades</button>
                 <button id="tab-aprovação" class="pb-2 px-4 border-b-2 border-transparent text-gray-400 hover:text-gray-200 hidden">Aprovação (Gestor)<span id="tab-pendentes" class="hidden ml-2 px-2 py-0.5 text-xs rounded-full bg-amber-600 text-white"></span></button>
+                <button id="tab-equipe" class="pb-2 px-4 border-b-2 border-transparent text-gray-400 hover:text-gray-200 hidden">Equipe</button>
                 <button id="tab-projetos" class="pb-2 px-4 border-b-2 border-transparent text-gray-400 hover:text-gray-200 hidden">Projetos</button>
             </div>
 
@@ -237,6 +241,16 @@
                 </div>
                 <div id="g-lista" class="space-y-4"></div>
             </section>
+            <section id="view-equipe" class="hidden space-y-6">
+                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-emerald-400">Equipe e gerentes</h2>
+                        <p class="text-sm text-gray-400 mt-1">Defina quem é gerente e a qual gerente cada colaborador responde. O gerente só vê e aprova as horas da própria equipe.</p>
+                    </div>
+                    <div id="equipe-lista" class="space-y-2"></div>
+                </div>
+            </section>
+
             <section id="view-projetos" class="hidden space-y-6">
                 <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4">
                     <div>
