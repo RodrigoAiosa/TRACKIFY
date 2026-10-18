@@ -245,7 +245,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 const tabAprovacao = $("tab-aprovação");
                 if (tabAprovacao) tabAprovacao.classList.remove("hidden");
                 $("tab-projetos").classList.remove("hidden");
-                if (perfil.role === "admin") $("tab-equipe").classList.remove("hidden");
+                if (perfil.role === "admin") {
+                    $("tab-equipe").classList.remove("hidden");
+                    $("tab-relatorios").classList.remove("hidden");
+                }
                 atualizarPendentes();
             }
         }
@@ -655,6 +658,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const gest = qual === "gestor";
         const proj = qual === "projetos";
         const eqp = qual === "equipe";
+        const rel = qual === "relatorios";
+        $("view-relatorios").classList.toggle("hidden", !rel);
         $("view-equipe").classList.toggle("hidden", !eqp);
         $("view-colaborador").classList.toggle("hidden", !colab);
         $("view-gestor").classList.toggle("hidden", !gest);
@@ -670,15 +675,293 @@ document.addEventListener("DOMContentLoaded", () => {
         marca($("tab-aprovação"), gest);
         marca($("tab-projetos"), proj);
         marca($("tab-equipe"), eqp);
+        marca($("tab-relatorios"), rel);
 
         if (gest && ehGestor()) iniciarGestor();
         if (proj && ehGestor()) carregarProjetos();
         if (eqp && perfil && perfil.role === "admin") carregarEquipe();
+        if (rel && perfil && perfil.role === "admin") iniciarRelatorios();
     }
     $("tab-ponto").addEventListener("click", () => ativarAba("ponto"));
     $("tab-aprovação").addEventListener("click", () => ativarAba("gestor"));
     $("tab-projetos").addEventListener("click", () => ativarAba("projetos"));
     $("tab-equipe").addEventListener("click", () => ativarAba("equipe"));
+    $("tab-relatorios").addEventListener("click", () => ativarAba("relatorios"));
+
+    // ---------------------------------------------------------------
+    // Relatórios de gestão (somente ADM)
+    // ---------------------------------------------------------------
+    const STATUS_REL = ["Pendente", "Aprovado Integral", "Aprovado Parcial", "Glosado/Rejeitado"];
+    let relIniciado = false;
+    let relTabelas = [];   // tabelas do último relatório (para exportar CSV)
+
+    async function paginar(montar) {
+        let todos = [], de = 0;
+        for (;;) {
+            const { data, error } = await montar().range(de, de + 999);
+            if (error) throw error;
+            todos = todos.concat(data || []);
+            if (!data || data.length < 1000) break;
+            de += 1000;
+        }
+        return todos;
+    }
+
+    function iniciarRelatorios() {
+        if (!relIniciado) {
+            relIniciado = true;
+            const hoje = new Date();
+            $("rel-de").value = dataISO(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
+            $("rel-ate").value = dataISO(hoje);
+        }
+        carregarRelatorios();
+    }
+
+    // célula: valor simples, ou [valorCSV, texto, percentualDaBarra?]
+    const dec = (n) => (Math.round(n * 100) / 100).toFixed(2).replace(".", ",");
+    const H = (min) => [dec((min || 0) / 60), fmtMin(min || 0)];
+    const PCT = (n, d) => (d > 0 ? [dec((n / d) * 100), `${Math.round((n / d) * 100)}%`] : ["", "—"]);
+    const txt = (c) => (Array.isArray(c) ? c[1] : c);
+    const csvVal = (c) => (Array.isArray(c) ? c[0] : c);
+
+    function tabelaRel(titulo, colunas, linhas, nota) {
+        const idx = relTabelas.length;
+        relTabelas.push({ titulo, colunas, linhas });
+        const th = colunas.map((c, i) => `<th class="py-2 pr-4 font-medium ${i ? "text-right" : "text-left"}">${esc(c)}</th>`).join("");
+        const tr = linhas.length ? linhas.map((l) => `<tr class="border-t border-gray-700">${l.map((c, i) => {
+            const bar = Array.isArray(c) && c[2] != null
+                ? `<div class="mt-1 h-1.5 bg-gray-700 rounded"><div class="h-1.5 bg-emerald-500 rounded" style="width:${Math.max(0, Math.min(100, c[2]))}%"></div></div>` : "";
+            return `<td class="py-2 pr-4 ${i ? "text-right tabular-nums" : "text-left"} text-gray-200">${esc(txt(c))}${bar}</td>`;
+        }).join("")}</tr>`).join("")
+            : `<tr><td colspan="${colunas.length}" class="py-3 text-gray-500">Sem dados no período.</td></tr>`;
+        return `<div class="bg-gray-800 p-6 rounded-xl border border-gray-700" data-rel="${idx}">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+                <h3 class="text-base font-semibold text-emerald-400">${esc(titulo)}</h3>
+                <button type="button" data-csv="${idx}" class="text-xs px-2 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100">Exportar CSV</button>
+            </div>
+            ${nota ? `<p class="text-xs text-gray-500 mb-2">${esc(nota)}</p>` : ""}
+            <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="text-xs text-gray-400"><tr>${th}</tr></thead><tbody>${tr}</tbody></table></div>
+        </div>`;
+    }
+
+    function baixarCSV(nome, colunas, linhas) {
+        const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+        const corpo = [colunas.map(q).join(";")].concat(linhas.map((l) => l.map((c) => q(csvVal(c))).join(";"))).join("\r\n");
+        const blob = new Blob(["\ufeff" + corpo], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${nome.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-")}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function diasUteis(de, ate) {
+        const out = [];
+        for (let d = new Date(de + "T12:00:00"); dataISO(d) <= ate; d.setDate(d.getDate() + 1)) {
+            if (d.getDay() !== 0 && d.getDay() !== 6) out.push(dataISO(d));
+        }
+        return out;
+    }
+
+    async function carregarRelatorios() {
+        const alvo = $("rel-conteudo");
+        const de = $("rel-de").value, ate = $("rel-ate").value;
+        if (!de || !ate || de > ate) { alvo.innerHTML = '<p class="text-sm text-red-400">Informe um período válido (De deve ser anterior a Até).</p>'; return; }
+        alvo.innerHTML = '<p class="text-sm text-gray-400">Carregando relatórios…</p>';
+
+        let perfis, pontos, atvs, projs, tps;
+        try {
+            [perfis, pontos, atvs, projs, tps] = await Promise.all([
+                paginar(() => sb.from("perfis").select("id, nome_completo, email, role, gestor_id").order("nome_completo").order("id")),
+                paginar(() => sb.from("apontamentos_ponto").select("*").gte("data", de).lte("data", ate).order("data").order("id")),
+                paginar(() => sb.from("apontamentos_atividades").select("*").gte("data", de).lte("data", ate).order("data").order("id")),
+                paginar(() => sb.from("projetos").select("id, nome_projeto").order("id")),
+                paginar(() => sb.from("tipos_atividade").select("id, nome").order("id"))
+            ]);
+        } catch (err) {
+            alvo.innerHTML = `<p class="text-sm text-red-400">Não foi possível carregar os dados: ${esc(msgErro(err))}</p>`;
+            return;
+        }
+
+        // filtros (os seletores são reconstruídos a cada carga, preservando a escolha)
+        const gerSel = $("rel-gerente").value, colSel = $("rel-colab").value;
+        const gerentes = perfis.filter((x) => x.role === "gestor");
+        $("rel-gerente").innerHTML = '<option value="">Todos</option><option value="__sem">Sem gerente</option>'
+            + gerentes.map((g) => `<option value="${g.id}">${esc(g.nome_completo)}</option>`).join("");
+        $("rel-gerente").value = gerentes.some((g) => g.id === gerSel) || gerSel === "__sem" ? gerSel : "";
+        const doGerente = (u) => {
+            const g = $("rel-gerente").value;
+            return !g || (g === "__sem" ? !u.gestor_id : u.gestor_id === g);
+        };
+        $("rel-colab").innerHTML = '<option value="">Todos</option>'
+            + perfis.filter((u) => u.role !== "admin" && doGerente(u)).map((u) => `<option value="${u.id}">${esc(u.nome_completo)}</option>`).join("");
+        $("rel-colab").value = [...$("rel-colab").options].some((o) => o.value === colSel) ? colSel : "";
+        const colFiltro = $("rel-colab").value;
+
+        const nomeDe = new Map(perfis.map((u) => [u.id, u.nome_completo]));
+        const gerenteDe = (uid) => {
+            const u = perfis.find((x) => x.id === uid);
+            return u && u.gestor_id ? (nomeDe.get(u.gestor_id) || "—") : "Sem gerente";
+        };
+        const usuarios = perfis.filter((u) => u.role !== "admin" && doGerente(u) && (!colFiltro || u.id === colFiltro));
+        const ids = new Set(usuarios.map((u) => u.id));
+        const P = pontos.filter((x) => ids.has(x.usuario_id));
+        const A = atvs.filter((x) => ids.has(x.usuario_id));
+        const nomeProj = new Map(projs.map((x) => [x.id, x.nome_projeto]));
+        const nomeTipo = new Map(tps.map((x) => [x.id, x.nome]));
+        const st = (a) => a.status_aprovacao || "Pendente";
+        const min = (a, k) => Number(a[k]) || 0;
+        const hojeISO = dataISO(new Date());
+
+        relTabelas = [];
+        const secoes = [];
+
+        // ---------- KPIs ----------
+        const trabalhadoMin = P.reduce((s, x) => s + Math.round((Number(x.total_diario_horas) || 0) * 60), 0);
+        const realizadoMin = A.reduce((s, a) => s + min(a, "duracao_realizada_minutos"), 0);
+        const aprovadoMin = A.reduce((s, a) => s + min(a, "duracao_aprovada_minutos"), 0);
+        const avaliadoMin = A.filter((a) => st(a) !== "Pendente").reduce((s, a) => s + min(a, "duracao_realizada_minutos"), 0);
+        const pendentes = A.filter((a) => st(a) === "Pendente");
+        const kpis = [
+            ["Colaboradores com lançamento", new Set(P.map((x) => x.usuario_id)).size + " de " + usuarios.length],
+            ["Dias lançados", P.length],
+            ["Horas trabalhadas", fmtMin(trabalhadoMin)],
+            ["Horas em atividades", fmtMin(realizadoMin)],
+            ["Horas aprovadas", fmtMin(aprovadoMin)],
+            ["Aprovação das horas avaliadas", PCT(aprovadoMin, avaliadoMin)[1]],
+            ["Atividades pendentes", `${pendentes.length} (${fmtMin(pendentes.reduce((s, a) => s + min(a, "duracao_realizada_minutos"), 0))})`],
+            ["Atividades rejeitadas", A.filter((a) => st(a) === "Glosado/Rejeitado").length]
+        ];
+        secoes.push(`<div class="grid grid-cols-2 md:grid-cols-4 gap-3">${kpis.map(([r, v]) => `
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700"><div class="text-xs text-gray-400">${esc(r)}</div><div class="text-xl font-semibold text-gray-100 mt-1">${esc(v)}</div></div>`).join("")}</div>`);
+
+        // ---------- Por colaborador ----------
+        const porUser = usuarios.map((u) => {
+            const pu = P.filter((x) => x.usuario_id === u.id), au = A.filter((x) => x.usuario_id === u.id);
+            const trab = pu.reduce((s, x) => s + Math.round((Number(x.total_diario_horas) || 0) * 60), 0);
+            const real = au.reduce((s, a) => s + min(a, "duracao_realizada_minutos"), 0);
+            const apr = au.reduce((s, a) => s + min(a, "duracao_aprovada_minutos"), 0);
+            const aval = au.filter((a) => st(a) !== "Pendente").reduce((s, a) => s + min(a, "duracao_realizada_minutos"), 0);
+            const prev = au.reduce((s, a) => s + min(a, "duracao_prevista_minutos"), 0);
+            const pend = au.filter((a) => st(a) === "Pendente");
+            return { u, dias: pu.length, trab, real, apr, aval, prev, pend: pend.length, pendMin: pend.reduce((s, a) => s + min(a, "duracao_realizada_minutos"), 0), datas: new Set(pu.map((x) => x.data)) };
+        });
+        const maxTrab = Math.max(1, ...porUser.map((x) => x.trab));
+        secoes.push(tabelaRel("Horas por colaborador",
+            ["Colaborador", "Gerente", "Dias", "Trabalhadas", "Em atividades", "Aderência", "Aprovadas", "Aprovação", "Pendentes"],
+            porUser.map((x) => [x.u.nome_completo, gerenteDe(x.u.id), x.dias, [H(x.trab)[0], fmtMin(x.trab), (x.trab / maxTrab) * 100],
+                H(x.real), PCT(x.real, x.trab), H(x.apr), PCT(x.apr, x.aval), `${x.pend} (${fmtMin(x.pendMin)})`]),
+            "Aderência = horas em atividades ÷ horas trabalhadas. Aprovação = horas aprovadas ÷ horas já avaliadas."));
+
+        // ---------- Por gerente ----------
+        const grupos = new Map();
+        porUser.forEach((x) => {
+            const g = gerenteDe(x.u.id);
+            const o = grupos.get(g) || { n: 0, dias: 0, trab: 0, real: 0, apr: 0, aval: 0, pend: 0 };
+            o.n++; o.dias += x.dias; o.trab += x.trab; o.real += x.real; o.apr += x.apr; o.aval += x.aval; o.pend += x.pend;
+            grupos.set(g, o);
+        });
+        secoes.push(tabelaRel("Horas por gerente (equipe)",
+            ["Gerente", "Colaboradores", "Dias", "Trabalhadas", "Em atividades", "Aprovadas", "Aprovação", "Pendentes"],
+            [...grupos.entries()].sort((a, b) => b[1].trab - a[1].trab).map(([g, o]) =>
+                [g, o.n, o.dias, H(o.trab), H(o.real), H(o.apr), PCT(o.apr, o.aval), o.pend])));
+
+        // ---------- Por projeto / tipo ----------
+        const agrupar = (chave, nomes, semNome) => {
+            const m = new Map();
+            A.forEach((a) => {
+                const n = nomes.get(a[chave]) || semNome;
+                const o = m.get(n) || { q: 0, real: 0, apr: 0, aval: 0, prev: 0 };
+                o.q++; o.real += min(a, "duracao_realizada_minutos"); o.apr += min(a, "duracao_aprovada_minutos");
+                if (st(a) !== "Pendente") o.aval += min(a, "duracao_realizada_minutos");
+                o.prev += min(a, "duracao_prevista_minutos");
+                m.set(n, o);
+            });
+            const total = [...m.values()].reduce((s, o) => s + o.real, 0) || 1;
+            return [...m.entries()].sort((a, b) => b[1].real - a[1].real).map(([n, o]) =>
+                [n, o.q, [H(o.real)[0], fmtMin(o.real), (o.real / total) * 100], PCT(o.real, total), H(o.apr), PCT(o.apr, o.aval)]);
+        };
+        const colsAgr = (r) => [r, "Atividades", "Realizado", "% do total", "Aprovado", "Aprovação"];
+        secoes.push(tabelaRel("Horas por projeto", colsAgr("Projeto"), agrupar("projeto_id", nomeProj, "Sem projeto")));
+        secoes.push(tabelaRel("Horas por tipo de atividade", colsAgr("Tipo"), agrupar("tipo_atividade_id", nomeTipo, "Sem tipo")));
+
+        // ---------- Projeto x colaborador ----------
+        const pc = new Map();
+        A.forEach((a) => {
+            const k = `${nomeProj.get(a.projeto_id) || "Sem projeto"}\u0000${nomeDe.get(a.usuario_id) || "—"}`;
+            pc.set(k, (pc.get(k) || 0) + min(a, "duracao_realizada_minutos"));
+        });
+        secoes.push(tabelaRel("Projeto × colaborador (horas realizadas)", ["Projeto", "Colaborador", "Horas"],
+            [...pc.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => { const [pr, co] = k.split("\u0000"); return [pr, co, H(v)]; })));
+
+        // ---------- Situação das aprovações ----------
+        secoes.push(tabelaRel("Situação das aprovações", ["Situação", "Atividades", "Horas realizadas", "Horas aprovadas"],
+            STATUS_REL.map((s) => { const l = A.filter((a) => st(a) === s);
+                return [s, l.length, H(l.reduce((t, a) => t + min(a, "duracao_realizada_minutos"), 0)), H(l.reduce((t, a) => t + min(a, "duracao_aprovada_minutos"), 0))]; })));
+
+        // ---------- Previsto x realizado ----------
+        secoes.push(tabelaRel("Previsto × realizado por colaborador", ["Colaborador", "Previsto", "Realizado", "Desvio"],
+            porUser.filter((x) => x.prev || x.real).map((x) => [x.u.nome_completo, H(x.prev), H(x.real),
+                x.prev ? [dec(((x.real - x.prev) / x.prev) * 100), `${x.real >= x.prev ? "+" : ""}${Math.round(((x.real - x.prev) / x.prev) * 100)}%`] : ["", "—"]]),
+            "Desvio positivo = gastou mais tempo do que previu."));
+
+        // ---------- Modalidade ----------
+        const mod = new Map();
+        P.forEach((x) => { const m = x.modalidade || "Não informada"; const o = mod.get(m) || { d: 0, h: 0 }; o.d++; o.h += Math.round((Number(x.total_diario_horas) || 0) * 60); mod.set(m, o); });
+        secoes.push(tabelaRel("Presencial × remoto", ["Modalidade", "Dias", "Horas trabalhadas", "% dos dias"],
+            [...mod.entries()].map(([m, o]) => [m, o.d, H(o.h), PCT(o.d, P.length)])));
+
+        // ---------- Evolução diária ----------
+        const dia = new Map();
+        P.forEach((x) => { const o = dia.get(x.data) || { t: 0, r: 0, a: 0 }; o.t += Math.round((Number(x.total_diario_horas) || 0) * 60); dia.set(x.data, o); });
+        A.forEach((a) => { const o = dia.get(a.data) || { t: 0, r: 0, a: 0 }; o.r += min(a, "duracao_realizada_minutos"); o.a += min(a, "duracao_aprovada_minutos"); dia.set(a.data, o); });
+        const maxDia = Math.max(1, ...[...dia.values()].map((o) => o.t));
+        secoes.push(tabelaRel("Evolução diária", ["Data", "Trabalhadas", "Em atividades", "Aprovadas"],
+            [...dia.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([d, o]) => [fmtData(d), [H(o.t)[0], fmtMin(o.t), (o.t / maxDia) * 100], H(o.r), H(o.a)])));
+
+        // ---------- Dias úteis sem lançamento ----------
+        const uteis = diasUteis(de, ate < hojeISO ? ate : hojeISO);
+        secoes.push(tabelaRel("Dias úteis sem lançamento", ["Colaborador", "Gerente", "Dias úteis", "Lançados", "Sem lançamento"],
+            porUser.map((x) => { const sem = uteis.filter((d) => !x.datas.has(d)).length; return [x.u.nome_completo, gerenteDe(x.u.id), uteis.length, x.dias, sem]; })
+                .sort((a, b) => b[4] - a[4]),
+            "Considera segunda a sexta até hoje; feriados e folgas não são descontados."));
+
+        // ---------- Pendências por idade ----------
+        const faixas = [["0–2 dias", 0, 2], ["3–7 dias", 3, 7], ["8–14 dias", 8, 14], ["15+ dias", 15, 1e9]];
+        const idade = (d) => Math.max(0, Math.round((new Date(hojeISO + "T12:00:00") - new Date(d + "T12:00:00")) / 86400000));
+        const pg = new Map();
+        pendentes.forEach((a) => {
+            const g = gerenteDe(a.usuario_id); const o = pg.get(g) || faixas.map(() => 0);
+            const i = faixas.findIndex((f) => idade(a.data) >= f[1] && idade(a.data) <= f[2]); o[i]++; pg.set(g, o);
+        });
+        secoes.push(tabelaRel("Pendências de aprovação por idade", ["Gerente", ...faixas.map((f) => f[0]), "Total"],
+            [...pg.entries()].map(([g, o]) => [g, ...o, o.reduce((s, n) => s + n, 0)])));
+
+        // ---------- Rejeições e intercorrências ----------
+        secoes.push(tabelaRel("Atividades rejeitadas (com motivo)", ["Data", "Colaborador", "Projeto", "Atividade", "Horas", "Motivo"],
+            A.filter((a) => st(a) === "Glosado/Rejeitado").map((a) => [fmtData(a.data), nomeDe.get(a.usuario_id) || "—",
+                nomeProj.get(a.projeto_id) || "Sem projeto", a.descricao_atividade || "", H(min(a, "duracao_realizada_minutos")), a["motivo_nao_aprovação"] || ""])));
+        secoes.push(tabelaRel("Intercorrências registradas", ["Data", "Colaborador", "Projeto", "Intercorrência"],
+            A.filter((a) => (a.intercorrencias || "").trim()).map((a) => [fmtData(a.data), nomeDe.get(a.usuario_id) || "—", nomeProj.get(a.projeto_id) || "Sem projeto", a.intercorrencias])));
+
+        alvo.innerHTML = secoes.join("");
+    }
+
+    $("rel-atualizar").addEventListener("click", carregarRelatorios);
+    ["rel-gerente", "rel-colab", "rel-de", "rel-ate"].forEach((id) => $(id).addEventListener("change", carregarRelatorios));
+    $("rel-conteudo").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-csv]");
+        if (!b) return;
+        const t = relTabelas[Number(b.dataset.csv)];
+        if (t) baixarCSV(t.titulo, t.colunas, t.linhas);
+    });
+    $("rel-exportar-tudo").addEventListener("click", () => {
+        if (!relTabelas.length) return toast("Nada para exportar ainda.", "aviso");
+        relTabelas.forEach((t, i) => setTimeout(() => baixarCSV(`${String(i + 1).padStart(2, "0")} ${t.titulo}`, t.colunas, t.linhas), i * 250));
+    });
 
     // ---------------------------------------------------------------
     // Equipe (somente ADM): define gerentes e a equipe de cada um
