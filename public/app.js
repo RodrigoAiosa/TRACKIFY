@@ -76,6 +76,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (/Email not confirmed/i.test(m)) return "E-mail ainda não confirmado. Verifique sua caixa de entrada.";
         if (/already registered|already been registered/i.test(m)) return "Este e-mail já está cadastrado.";
         if (/Database error saving new user/i.test(m)) return "Não foi possível concluir o cadastro. Verifique se o e-mail já foi usado.";
+        if (/duplicate key|projetos_nome/i.test(m)) return "Já existe um projeto com esse nome.";
+        if (/rate limit/i.test(m)) return "Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente.";
         if (/row-level security|permission denied/i.test(m)) return "Operação não permitida: o registro pode estar travado ou já avaliado pelo gestor.";
         return m;
     }
@@ -226,6 +228,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (ehGestor()) {
                 const tabAprovacao = $("tab-aprovação");
                 if (tabAprovacao) tabAprovacao.classList.remove("hidden");
+                $("tab-projetos").classList.remove("hidden");
                 atualizarPendentes();
             }
         }
@@ -632,8 +635,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function ativarAba(qual) {
         const colab = qual === "ponto";
+        const gest = qual === "gestor";
+        const proj = qual === "projetos";
         $("view-colaborador").classList.toggle("hidden", !colab);
-        $("view-gestor").classList.toggle("hidden", colab);
+        $("view-gestor").classList.toggle("hidden", !gest);
+        $("view-projetos").classList.toggle("hidden", !proj);
 
         const ativa = ["border-emerald-500", "text-emerald-400", "font-semibold"];
         const inativa = ["border-transparent", "text-gray-400", "hover:text-gray-200"];
@@ -642,12 +648,82 @@ document.addEventListener("DOMContentLoaded", () => {
             inativa.forEach((c) => btn.classList.toggle(c, !ligado));
         };
         marca($("tab-ponto"), colab);
-        marca($("tab-aprovação"), !colab);
+        marca($("tab-aprovação"), gest);
+        marca($("tab-projetos"), proj);
 
-        if (!colab && ehGestor()) iniciarGestor();
+        if (gest && ehGestor()) iniciarGestor();
+        if (proj && ehGestor()) carregarProjetos();
     }
     $("tab-ponto").addEventListener("click", () => ativarAba("ponto"));
     $("tab-aprovação").addEventListener("click", () => ativarAba("gestor"));
+    $("tab-projetos").addEventListener("click", () => ativarAba("projetos"));
+
+    // ---------------------------------------------------------------
+    // Projetos (gestor/admin)
+    // ---------------------------------------------------------------
+    async function carregarProjetos() {
+        const lista = $("projetos-lista");
+        const { data, error } = await sb.from("projetos")
+            .select("id, nome_projeto, descricao, ativo").order("nome_projeto");
+        if (error) {
+            lista.innerHTML = `<p class="text-sm text-red-400">${esc(msgErro(error))}</p>`;
+            return;
+        }
+        const itens = data || [];
+        const ativos = itens.filter((x) => x.ativo).length;
+        $("projetos-resumo").textContent = itens.length
+            ? `${itens.length} projeto(s) · ${ativos} ativo(s)` : "";
+        if (!itens.length) {
+            lista.innerHTML = '<p class="text-sm text-gray-500">Nenhum projeto cadastrado ainda. Use o formulário acima.</p>';
+            return;
+        }
+        lista.innerHTML = itens.map((x) => `
+            <div class="flex flex-wrap items-center justify-between gap-3 p-3 bg-gray-900 rounded-lg border border-gray-700">
+                <div class="min-w-0">
+                    <div class="font-medium ${x.ativo ? "text-gray-100" : "text-gray-500 line-through"}">${esc(x.nome_projeto)}</div>
+                    ${x.descricao ? `<div class="text-xs text-gray-400">${esc(x.descricao)}</div>` : ""}
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs px-2 py-0.5 rounded-full ${x.ativo ? "bg-emerald-900 text-emerald-300" : "bg-gray-700 text-gray-400"}">${x.ativo ? "Ativo" : "Inativo"}</span>
+                    <button type="button" data-proj-toggle="${x.id}" data-ativo="${x.ativo ? "1" : "0"}" class="px-3 py-1 text-xs rounded-md bg-gray-700 hover:bg-gray-600 text-gray-100">${x.ativo ? "Inativar" : "Ativar"}</button>
+                </div>
+            </div>`).join("");
+    }
+
+    $("projeto-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const nome = $("projeto-nome").value.replace(/\s+/g, " ").trim();
+        const descricao = $("projeto-descricao").value.trim();
+        if (!nome) { toast("Informe o nome do projeto.", "erro"); return; }
+        const btn = $("projeto-salvar");
+        btn.disabled = true;
+        try {
+            const { error } = await sb.from("projetos")
+                .insert({ nome_projeto: nome, descricao: descricao || null });
+            if (error) { toast(msgErro(error), "erro"); return; }
+            $("projeto-form").reset();
+            toast("Projeto cadastrado.");
+            await Promise.all([carregarProjetos(), carregarApoio()]);
+        } finally {
+            btn.disabled = false;
+        }
+    });
+
+    $("projetos-lista").addEventListener("click", async (e) => {
+        const b = e.target.closest("[data-proj-toggle]");
+        if (!b) return;
+        const id = Number(b.dataset.projToggle);
+        const novo = b.dataset.ativo !== "1";
+        b.disabled = true;
+        const { data, error } = await sb.from("projetos").update({ ativo: novo }).eq("id", id).select("id");
+        if (error || !data || !data.length) {
+            toast(error ? msgErro(error) : "Operação não permitida.", "erro");
+            b.disabled = false;
+            return;
+        }
+        toast(novo ? "Projeto ativado." : "Projeto inativado.");
+        await Promise.all([carregarProjetos(), carregarApoio()]);
+    });
 
     // ---------------------------------------------------------------
     // Aprovação (gerência)
