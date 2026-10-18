@@ -27,6 +27,9 @@
                 </div>
                 <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors">Entrar</button>
                 <div class="text-center">
+                    <button type="button" id="btn-forgot" class="text-xs text-emerald-400 hover:underline cursor-pointer">Esqueci minha senha</button>
+                </div>
+                <div class="text-center">
                     <button type="button" id="btn-login-adm" class="text-xs text-gray-400 hover:text-emerald-400 underline cursor-pointer">Entrar como ADM do sistema</button>
                 </div>
                 <div class="text-center mt-4">
@@ -34,6 +37,36 @@
                         <button type="button" id="btn-show-register" class="text-emerald-400 hover:underline font-semibold cursor-pointer">Cadastrar-se</button>
                     </p>
                 </div>
+            </form>
+
+            <!-- RECUPERAR SENHA: PEDIR O LINK -->
+            <form id="forgot-form" class="space-y-4 hidden">
+                <h2 class="text-lg font-semibold text-emerald-400 text-center mb-2">Recuperar senha</h2>
+                <p class="text-sm text-gray-400">Informe o e-mail do seu cadastro. Enviaremos um link para você criar uma nova senha.</p>
+                <div>
+                    <label for="forgot-email" class="block text-sm text-gray-300">E-mail</label>
+                    <input type="email" id="forgot-email" required autocomplete="email" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </div>
+                <button type="submit" id="forgot-enviar" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg transition-colors">Enviar link</button>
+                <p id="forgot-ok" class="hidden text-sm text-emerald-300 text-center">Se o e-mail estiver cadastrado, você receberá o link em instantes. Confira também a caixa de spam.</p>
+                <div class="text-center">
+                    <button type="button" id="btn-forgot-voltar" class="text-xs text-gray-400 hover:text-emerald-400 underline cursor-pointer">Voltar ao login</button>
+                </div>
+            </form>
+
+            <!-- RECUPERAR SENHA: DEFINIR A NOVA SENHA (aberto pelo link do e-mail) -->
+            <form id="reset-form" class="space-y-4 hidden">
+                <h2 class="text-lg font-semibold text-emerald-400 text-center mb-2">Criar nova senha</h2>
+                <div>
+                    <label for="reset-password" class="block text-sm text-gray-300">Nova senha</label>
+                    <input type="password" id="reset-password" required minlength="6" autocomplete="new-password" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </div>
+                <div>
+                    <label for="reset-password-confirm" class="block text-sm text-gray-300">Confirmar nova senha</label>
+                    <input type="password" id="reset-password-confirm" required minlength="6" autocomplete="new-password" class="w-full mt-1 p-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                    <p id="reset-erro" class="hidden text-xs text-red-400 mt-1">As senhas não coincidem.</p>
+                </div>
+                <button type="submit" id="reset-salvar" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg transition-colors">Salvar nova senha</button>
             </form>
 
             <!-- FORMULÁRIO DE CADASTRO DE COLABORADOR -->

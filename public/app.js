@@ -77,6 +77,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (/already registered|already been registered/i.test(m)) return "Este e-mail já está cadastrado.";
         if (/Database error saving new user/i.test(m)) return "Não foi possível concluir o cadastro. Verifique se o e-mail já foi usado.";
         if (/duplicate key|projetos_nome/i.test(m)) return "Já existe um projeto com esse nome.";
+        if (/same password|different from the old/i.test(m)) return "A nova senha precisa ser diferente da atual.";
+        if (/at least \d+ characters|weak.?password|Password should/i.test(m)) return "Senha muito fraca. Use pelo menos 6 caracteres.";
+        if (/session missing|expired|invalid.*(token|link)/i.test(m)) return "O link expirou ou já foi usado. Peça um novo em \"Esqueci minha senha\".";
         if (/rate limit/i.test(m)) return "Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente.";
         if (/row-level security|permission denied/i.test(m)) return "Operação não permitida: o registro pode estar travado ou já avaliado pelo gestor.";
         return m;
@@ -161,6 +164,71 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+
+    // ---------------------------------------------------------------
+    // Recuperar senha
+    // ---------------------------------------------------------------
+    const forgotForm = $("forgot-form");
+    const resetForm = $("reset-form");
+    const telasAuth = () => [loginForm, registerForm, forgotForm, resetForm];
+    function mostrarTelaAuth(qual) {
+        telasAuth().forEach((f) => f.classList.toggle("hidden", f !== qual));
+    }
+
+    $("btn-forgot").addEventListener("click", () => {
+        $("forgot-ok").classList.add("hidden");
+        $("forgot-email").value = modoAdm ? "" : $("login-email").value;
+        mostrarTelaAuth(forgotForm);
+    });
+    $("btn-forgot-voltar").addEventListener("click", () => mostrarTelaAuth(loginForm));
+
+    forgotForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!sb) return toast("Erro ao conectar ao banco de dados.", "erro");
+        const btn = $("forgot-enviar");
+        btn.disabled = true;
+        const { error } = await sb.auth.resetPasswordForEmail($("forgot-email").value.trim(), {
+            redirectTo: location.origin + location.pathname
+        });
+        btn.disabled = false;
+        // Não revela se o e-mail existe; só avisa de falhas gerais (ex.: limite de envios)
+        if (error && /rate limit|too many|seconds/i.test(error.message || "")) { toast(msgErro(error), "erro"); return; }
+        if (error) console.error(error);
+        $("forgot-ok").classList.remove("hidden");
+    });
+
+    // O link do e-mail volta para esta página já autenticado (evento PASSWORD_RECOVERY)
+    const veioDeRecuperacao = /type=recovery/.test(location.hash) || /type=recovery/.test(location.search);
+    const linkComErro = /error_code=|error=access_denied/.test(location.hash);
+    let emRecuperacao = false;
+    function abrirRedefinicao() {
+        emRecuperacao = true;
+        authScreen.classList.remove("hidden");
+        appScreen.classList.add("hidden");
+        mostrarTelaAuth(resetForm);
+    }
+    if (sb) {
+        sb.auth.onAuthStateChange((evento) => {
+            if (evento === "PASSWORD_RECOVERY") abrirRedefinicao();
+        });
+    }
+
+    resetForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const senha = $("reset-password").value;
+        if (senha !== $("reset-password-confirm").value) { $("reset-erro").classList.remove("hidden"); return; }
+        $("reset-erro").classList.add("hidden");
+        const btn = $("reset-salvar");
+        btn.disabled = true;
+        const { data, error } = await sb.auth.updateUser({ password: senha });
+        btn.disabled = false;
+        if (error) { toast(msgErro(error), "erro"); return; }
+        toast("Senha alterada com sucesso.");
+        history.replaceState(null, "", location.pathname);
+        emRecuperacao = false;
+        resetForm.reset();
+        carregarApp(data.user);
+    });
 
     // ---------------------------------------------------------------
     // Cadastro
@@ -1329,7 +1397,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // Mantém a sessão ao recarregar a página
     // ---------------------------------------------------------------
     if (sb) {
+        if (linkComErro) {
+            toast("O link expirou ou já foi usado. Peça um novo em \"Esqueci minha senha\".", "erro");
+            history.replaceState(null, "", location.pathname);
+        }
         sb.auth.getSession().then(({ data }) => {
+            if (veioDeRecuperacao || emRecuperacao) {
+                // sessão de recuperação: pede a nova senha antes de entrar no sistema
+                if (data && data.session) abrirRedefinicao();
+                return;
+            }
             if (data && data.session) carregarApp(data.session.user);
         });
     }
